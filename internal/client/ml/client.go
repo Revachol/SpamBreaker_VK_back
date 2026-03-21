@@ -1,0 +1,79 @@
+package ml
+
+import (
+	"bytes"
+	"context"
+	"encoding/json"
+	"fmt"
+	"net/http"
+	"time"
+
+	"github.com/Revachol/SpamBreaker_VK_back/internal/domain"
+)
+
+// mlRequest — тело запроса к ML-сервису.
+type mlRequest struct {
+	Text string `json:"text"`
+}
+
+// mlResponse — ответ от ML-сервиса.
+type mlResponse struct {
+	Label      string             `json:"label"`
+	Confidence float64            `json:"confidence"`
+	AllScores  map[string]float64 `json:"all_scores"`
+}
+
+// Client реализует domain.Classifier.
+type Client struct {
+	baseURL    string
+	httpClient *http.Client
+}
+
+func NewClient(baseURL string) *Client {
+	return &Client{
+		baseURL: baseURL,
+		httpClient: &http.Client{
+			Timeout: 5 * time.Second,
+		},
+	}
+}
+
+// Classify отправляет текст в ML-сервис и возвращает вердикт.
+func (c *Client) Classify(ctx context.Context, text string) (*domain.Verdict, error) {
+	body, err := json.Marshal(mlRequest{Text: text})
+	if err != nil {
+		return nil, fmt.Errorf("ml client: marshal request: %w", err)
+	}
+
+	req, err := http.NewRequestWithContext(
+		ctx,
+		http.MethodPost,
+		c.baseURL+"/classify",
+		bytes.NewReader(body),
+	)
+	if err != nil {
+		return nil, fmt.Errorf("ml client: build request: %w", err)
+	}
+	req.Header.Set("Content-Type", "application/json")
+
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("ml client: do request: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("ml client: unexpected status %d", resp.StatusCode)
+	}
+
+	var mlResp mlResponse
+	if err := json.NewDecoder(resp.Body).Decode(&mlResp); err != nil {
+		return nil, fmt.Errorf("ml client: decode response: %w", err)
+	}
+
+	return &domain.Verdict{
+		Label:      mlResp.Label,
+		Confidence: mlResp.Confidence,
+		AllScores:  mlResp.AllScores,
+	}, nil
+}
