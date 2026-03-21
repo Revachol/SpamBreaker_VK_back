@@ -5,16 +5,17 @@ FROM python:3.10-slim
 WORKDIR /app
 
 # Копируем файл с зависимостями
-COPY ml/requirements.txt /app/ml/requirements.txt
+COPY requirements.txt ./requirements.txt
 
 # Устанавливаем зависимости
-RUN pip install --no-cache-dir -r /app/ml/requirements.txt
+RUN pip install --no-cache-dir torch>=2.2.0 --index-url https://download.pytorch.org/whl/cpu && \
+    pip install --no-cache-dir -r requirements.txt
 
 # Копируем всё содержимое папки ml в рабочую директорию
-COPY ml /app/ml
+COPY ./classify_app.py ./classify_app.py
 
 # Указываем порт, который будет слушать приложение
 EXPOSE 8000
 
 # Запускаем uvicorn (без --reload для продакшена)
-CMD ["uvicorn", "ml.classify_app:app", "--host", "0.0.0.0", "--port", "8000"]
+CMD ["uvicorn", "classify_app:app", "--host", "0.0.0.0", "--port", "8000"]

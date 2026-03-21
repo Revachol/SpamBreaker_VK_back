@@ -1,5 +1,5 @@
 # ---- Сборка приложения ----
-FROM golang:1.21-alpine AS builder
+FROM golang:1.25-alpine AS builder
 
 WORKDIR /app
 
@@ -12,7 +12,6 @@ COPY . .
 
 # Собираем статический бинарник
 RUN CGO_ENABLED=0 GOOS=linux go build -a -installsuffix cgo -o ./build/main ./cmd/server/main.go
-RUN CGO_ENABLED=0 GOOS=linux go build -a -installsuffix cgo -o ./build/tg_bot ./bots/telegram/main.go
 
 # ---- Финальный образ ----
 FROM alpine:latest
@@ -24,11 +23,9 @@ WORKDIR /root/
 
 # Копируем скомпилированный бинарник из предыдущего этапа
 COPY --from=builder /app/build/main .
-COPY --from=builder /app/build/tg_bot .
 
 # Порт, который слушает приложение (измените при необходимости)
 EXPOSE 8080
-EXPOSE 8081
 
 # Запускаем
 CMD ["./main"]

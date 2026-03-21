@@ -1,4 +1,36 @@
 services:
+  main_service:
+    build:
+      context: .
+      dockerfile: ./infra/service.Dockerfile
+    container_name: main
+    ports:
+      - "${MAIN_PORT}:8080"
+    env_file:
+      - .env
+
+  bot_service:
+    build:
+      context: .
+      dockerfile: ./infra/bot.Dockerfile
+    container_name: bot
+    ports:
+      - "${BOT_PORT}:8000"
+    env_file:
+      - .env
+
+  ml_service:
+    build:
+      context: ./ml
+      dockerfile: ./../infra/ml.Dockerfile
+    container_name: model
+    ports:
+      - "${ML_PORT}:8000"
+    volumes:
+      - ./ml/${MODEL_FILE}:/app/best_context_model.pt
+    env_file:
+      - .env
+
   postgres:
     image: postgres:17
     container_name: postgres_sb
