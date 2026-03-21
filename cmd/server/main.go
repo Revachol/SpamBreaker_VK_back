@@ -1,14 +1,16 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"log"
 
 	"github.com/Revachol/SpamBreaker_VK_back/config"
 	mlclient "github.com/Revachol/SpamBreaker_VK_back/internal/client/ml"
 	httphandler "github.com/Revachol/SpamBreaker_VK_back/internal/handlers/http"
-	memrepo "github.com/Revachol/SpamBreaker_VK_back/internal/repository/memory"
+	repository "github.com/Revachol/SpamBreaker_VK_back/internal/repository/postgres"
 	"github.com/Revachol/SpamBreaker_VK_back/internal/service"
+	"github.com/Revachol/SpamBreaker_VK_back/pkg/postgres"
 )
 
 func main() {
@@ -17,7 +19,11 @@ func main() {
 
 	// 2. Инфраструктурные зависимости.
 	mlClient := mlclient.NewClient(cfg.ML.BaseURL)
-	repo := memrepo.NewRepository() // ← заменить на postgres.NewRepository(...) когда будет БД
+	pgx, err := postgres.NewConnect(context.Background(), &cfg.Postgres)
+	if err != nil {
+		log.Fatal(err)
+	}
+	repo := repository.NewMessageRepository(pgx)
 
 	// 3. Бизнес-логика.
 	moderationUC := service.NewModerationUseCase(mlClient, repo)
