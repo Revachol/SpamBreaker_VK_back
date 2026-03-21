@@ -1,0 +1,159 @@
+package httphandler
+
+import (
+	"net/http"
+	"strconv"
+
+	"github.com/Revachol/SpamBreaker_VK_back/internal/service"
+	"github.com/gin-gonic/gin"
+)
+
+// Handler держит зависимости всех хендлеров.
+type Handler struct {
+	moderation *service.ModerationUseCase
+}
+
+func NewHandler(moderation *service.ModerationUseCase) *Handler {
+	return &Handler{moderation: moderation}
+}
+
+// ---------- Request / Response DTOs ----------
+
+type checkRequest struct {
+	Text string `json:"text" binding:"required"`
+}
+
+type checkResponse struct {
+	ID         string             `json:"id"`
+	Text       string             `json:"text"`
+	Label      string             `json:"label"`
+	Confidence float64            `json:"confidence"`
+	AllScores  map[string]float64 `json:"all_scores"`
+	CreatedAt  string             `json:"created_at"`
+}
+
+type errorResponse struct {
+	Error string `json:"error"`
+}
+
+// ---------- Handlers ----------
+
+// Check godoc
+//
+//	@Summary     Проверить текст
+//	@Description Отправляет текст в ML-сервис и возвращает метку тональности
+//	@Tags        moderation
+//	@Accept      json
+//	@Produce     json
+//	@Param       body body     checkRequest  true "Текст для проверки"
+//	@Success     200  {object} checkResponse
+//	@Failure     400  {object} errorResponse
+//	@Failure     502  {object} errorResponse
+//	@Router      /api/v1/check [post]
+func (h *Handler) Check(c *gin.Context) {
+	var req checkRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, errorResponse{Error: err.Error()})
+		return
+	}
+
+	record, err := h.moderation.CheckText(c.Request.Context(), req.Text)
+	if err != nil {
+		// Разделяем ошибки валидации и ошибки upstream-сервиса.
+		status := http.StatusBadRequest
+		if isUpstreamError(err) {
+			status = http.StatusBadGateway
+		}
+		c.JSON(status, errorResponse{Error: err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusOK, checkResponse{
+		ID:         record.ID,
+		Text:       record.Text,
+		Label:      record.Verdict.Label,
+		Confidence: record.Verdict.Confidence,
+		AllScores:  record.Verdict.AllScores,
+		CreatedAt:  record.CreatedAt.Format("2006-01-02T15:04:05Z"),
+	})
+}
+
+// GetHistory godoc
+//
+//	@Summary     История проверок
+//	@Description Возвращает список последних проверок с пагинацией
+//	@Tags        moderation
+//	@Produce     json
+//	@Param       limit  query int false "Количество записей (default 20, max 100)"
+//	@Param       offset query int false "Смещение"
+//	@Success     200    {array}  checkResponse
+//	@Failure     500    {object} errorResponse
+//	@Router      /api/v1/history [get]
+func (h *Handler) GetHistory(c *gin.Context) {
+	limit := queryInt(c, "limit", 20)
+	offset := queryInt(c, "offset", 0)
+
+	records, err := h.moderation.GetHistory(c.Request.Context(), limit, offset)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, errorResponse{Error: err.Error()})
+		return
+	}
+
+	resp := make([]checkResponse, 0, len(records))
+	for _, r := range records {
+		resp = append(resp, checkResponse{
+			ID:         r.ID,
+			Text:       r.Text,
+			Label:      r.Verdict.Label,
+			Confidence: r.Verdict.Confidence,
+			AllScores:  r.Verdict.AllScores,
+			CreatedAt:  r.CreatedAt.Format("2006-01-02T15:04:05Z"),
+		})
+	}
+
+	c.JSON(http.StatusOK, resp)
+}
+
+// GetRecord godoc
+//
+//	@Summary     Получить запись по ID
+//	@Tags        moderation
+//	@Produce     json
+//	@Param       id  path     string true "ID записи"
+//	@Success     200 {object} checkResponse
+//	@Failure     404 {object} errorResponse
+//	@Router      /api/v1/history/{id} [get]
+func (h *Handler) GetRecord(c *gin.Context) {
+	id := c.Param("id")
+
+	record, err := h.moderation.GetRecord(c.Request.Context(), id)
+	if err != nil {
+		c.JSON(http.StatusNotFound, errorResponse{Error: err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusOK, checkResponse{
+		ID:         record.ID,
+		Text:       record.Text,
+		Label:      record.Verdict.Label,
+		Confidence: record.Verdict.Confidence,
+		AllScores:  record.Verdict.AllScores,
+		CreatedAt:  record.CreatedAt.Format("2006-01-02T15:04:05Z"),
+	})
+}
+
+// ---------- helpers ----------
+
+func queryInt(c *gin.Context, key string, defaultVal int) int {
+	if raw := c.Query(key); raw != "" {
+		if v, err := strconv.Atoi(raw); err == nil {
+			return v
+		}
+	}
+	return defaultVal
+}
+
+// isUpstreamError — простая эвристика: ошибки от ML-клиента содержат "ml client".
+func isUpstreamError(err error) bool {
+	return err != nil && len(err.Error()) > 9 && err.Error()[:9] == "ml client"
+}
