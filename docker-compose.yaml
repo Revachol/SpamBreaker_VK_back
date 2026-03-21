@@ -1,0 +1,22 @@
+services:
+  postgres:
+    image: postgres:17
+    container_name: postgres_sb
+    environment:
+      POSTGRES_USER: ${PG_USER}
+      POSTGRES_PASSWORD: ${PG_PSWD}
+      POSTGRES_DB: ${PG_BASE}
+    ports:
+      - "${PG_PORT}:5432"
+    volumes:
+      - postgres_vk_data:/var/lib/postgresql/data
+
+  adminer:
+    image: adminer:latest
+    container_name: adminer_sb
+    restart: always
+    ports:
+      - "${AD_PORT}:8080"
+
+volumes:
+  postgres_vk_data:
