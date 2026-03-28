@@ -5,6 +5,7 @@ import (
 	"os"
 
 	"github.com/Revachol/SpamBreaker_VK_back/bots/shared"
+	"github.com/Revachol/SpamBreaker_VK_back/bots/telegram"
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
 	"github.com/joho/godotenv"
 )
@@ -30,7 +31,7 @@ func main() {
 	apiClient := shared.NewAPIClient(apiURL)
 
 	// Старт бота.
-	bot := NewBot(botAPI, apiClient)
+	bot := telegram.NewBot(botAPI, apiClient)
 	bot.Run()
 }
 

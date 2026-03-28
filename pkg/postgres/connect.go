@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"strconv"
 
-	"github.com/Revachol/SpamBreaker_VK_back/config"
+	"github.com/Revachol/SpamBreaker_VK_back/internal/config"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 

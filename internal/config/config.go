@@ -56,7 +56,7 @@ func Load() *Config {
 			HealthCheckInterval: 1 * time.Minute,
 
 			Migrated:   false,
-			Migrations: "./infra/migrations/",
+			Migrations: "./configs/migrations/",
 		},
 	}
 }

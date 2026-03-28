@@ -2,7 +2,7 @@ services:
   main_service:
     build:
       context: .
-      dockerfile: ./infra/service.Dockerfile
+      dockerfile: configs/service.Dockerfile
     container_name: main
     ports:
       - "${MAIN_PORT}:8080"
@@ -12,7 +12,7 @@ services:
   bot_service:
     build:
       context: .
-      dockerfile: ./infra/bot.Dockerfile
+      dockerfile: configs/bot.Dockerfile
     container_name: bot
     ports:
       - "${BOT_PORT}:8000"
@@ -22,7 +22,7 @@ services:
   ml_service:
     build:
       context: ./ml
-      dockerfile: ./../infra/ml.Dockerfile
+      dockerfile: configs/ml.Dockerfile
     container_name: model
     ports:
       - "${ML_PORT}:8000"
@@ -39,7 +39,7 @@ services:
       POSTGRES_PASSWORD: ${PG_PSWD}
       POSTGRES_DB: ${PG_BASE}
     ports:
-      - "${PG_PORT}:5432"
+      - "${PG_PORT}:${PG_PORT}"
     volumes:
       - postgres_vk_data:/var/lib/postgresql/data
 

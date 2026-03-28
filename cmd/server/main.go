@@ -5,8 +5,8 @@ import (
 	"fmt"
 	"log"
 
-	"github.com/Revachol/SpamBreaker_VK_back/config"
 	mlclient "github.com/Revachol/SpamBreaker_VK_back/internal/client/ml"
+	"github.com/Revachol/SpamBreaker_VK_back/internal/config"
 	httphandler "github.com/Revachol/SpamBreaker_VK_back/internal/handlers/http"
 	repository "github.com/Revachol/SpamBreaker_VK_back/internal/repository/postgres"
 	"github.com/Revachol/SpamBreaker_VK_back/internal/service"

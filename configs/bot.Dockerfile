@@ -11,7 +11,7 @@ RUN go mod download
 COPY . .
 
 # Собираем статический бинарник
-RUN CGO_ENABLED=0 GOOS=linux go build -a -installsuffix cgo -o ./build/tg_bot ./bots/telegram/
+RUN CGO_ENABLED=0 GOOS=linux go build -a -installsuffix cgo -o ./build/tg_bot ./cmd/telegram/
 
 # ---- Финальный образ ----
 FROM alpine:latest
