@@ -40,6 +40,10 @@ jobs:
   deploy:
     runs-on: ubuntu-latest
     needs: lint-and-test
+    env:
+      MODE: ${{ github.ref_name == 'refs/heads/main' && 'prod' || 'test' }}
+      BUILD_ENV: ${{ github.ref_name == 'refs/heads/main' && secrets.PROD_ENV || secrets.TEST_ENV }}
+      SERVER_CONFIG: ${{ secrets.SSH_CONFIG }}
 
     steps:
       - name: Checkout code
@@ -48,7 +52,6 @@ jobs:
       - name: Prepare ssh
         env:
           DEPLOY_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
-          SERVER_CONFIG: ${{ secrets.SSH_CONFIG }}
         run: |
           # Создаем приватный ключ для SSH
           mkdir -p ~/.ssh
@@ -57,19 +60,25 @@ jobs:
           ssh -o StrictHostKeyChecking=no -i ~/.ssh/deploy_key $SERVER_CONFIG echo "SSH connection successful"
 
       - name: Prepare images
-        env:
-          BUILD_ENV: ${{ github.ref_name == 'refs/heads/main' && secrets.PROD_ENV || secrets.TEST_ENV }}
         run: |
           echo "$BUILD_ENV" > .env
+          sed -i "s/^MODE=dev$/MODE=$MODE/" .env
           source .env
-          docker compose build main_service bot_service ml_service
+          docker compose --env-file .env build main_service bot_service ml_service
+          mv .env $MODE.env
           docker save -o all_images.tar model-$MODE:$TAG bot-$MODE:$TAG main-$MODE:$TAG
 
       - name: Deploy
         env:
-          SERVER_CONFIG: ${{ secrets.SSH_CONFIG }}
           APP_DIR: /home/ubuntu/spambreaker
         run: |
-          scp -o StrictHostKeyChecking=no -i ~/.ssh/deploy_key all_images.tar .env docker-compose.yaml $SERVER_CONFIG:$APP_DIR
+          scp -o StrictHostKeyChecking=no -i ~/.ssh/deploy_key all_images.tar $MODE.env docker-compose.yaml $SERVER_CONFIG:$APP_DIR
           ssh -o StrictHostKeyChecking=no -i ~/.ssh/deploy_key $SERVER_CONFIG "docker load -i $APP_DIR/all_images.tar"
-          ssh -o StrictHostKeyChecking=no -i ~/.ssh/deploy_key $SERVER_CONFIG "cd $APP_DIR && docker compose up -d"
+          ssh -o StrictHostKeyChecking=no -i ~/.ssh/deploy_key $SERVER_CONFIG "cd $APP_DIR && docker compose --env-file $MODE.env up -d --force-recreate"
+          RESULT=$(ssh -o StrictHostKeyChecking=no -i ~/.ssh/deploy_key $SERVER_CONFIG "docker ps -q | wc --lines")
+          if [[ "$RESULT" -eq "5" ]]; then
+            echo "Success"
+          else
+            echo "Expected 5 containers, got $RESULT"
+            exit 1
+          fi
