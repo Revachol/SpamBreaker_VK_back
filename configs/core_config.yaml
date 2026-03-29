@@ -1,0 +1,29 @@
+app:
+  name: CORE
+  host: 0.0.0.0
+  port: 8080
+  prefix: /api/v1
+  swagger_path: ./data/docs/server.json
+
+  cors:
+    allowed_origins:
+      - http://127.0.0.1:8001
+      - http://localhost:8001
+      - http://217.16.17.116:8001
+      - http://terabithia.online
+
+  logger:
+    level: TRACE
+
+  postgres:
+    host: PG_HOST
+    port: PG_PORT
+    base: PG_BASE
+    user: PG_USER
+    password: PG_PSWD
+    migrated: true
+    migrations: ./data/migrations
+
+  ml_service:
+    host: ML_HOST
+    port: ML_PORT

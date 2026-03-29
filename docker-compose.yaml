@@ -1,47 +1,59 @@
 services:
-  main_service:
+  core_service:
     build:
       context: .
-      dockerfile: configs/service.Dockerfile
-    image: main-${MODE}:${TAG}
-    container_name: main_${MODE}
+      dockerfile: infra/dockerfiles/core.Dockerfile
+    image: core-${MODE}:${TAG}
+    container_name: core_${MODE}
     depends_on:
       ml_service:
         condition: service_started
       postgres:
         condition: service_healthy
     ports:
-      - "${MAIN_PORT}:8080"
-    env_file:
-      - ${MODE}.env
+      - "${CORE_PORT}:8080"
+    environment:
+      MODE: ${MODE}
+      CONFIG_PATH: ./core_config.yaml
+      PG_HOST: ${PG_HOST}
+      PG_PORT: ${PG_PORT}
+      PG_BASE: ${PG_BASE}
+      PG_USER: ${PG_USER}
+      PG_PSWD: ${PG_PSWD}
+      ML_HOST: ${ML_HOST}
+      ML_PORT: ${ML_PORT}
     networks:
       - service-net
 
   bot_service:
     build:
       context: .
-      dockerfile: configs/bot.Dockerfile
+      dockerfile: infra/dockerfiles/bot.Dockerfile
     image: bot-${MODE}:${TAG}
     container_name: bot_${MODE}
     depends_on:
-      - main_service
+      - core_service
     ports:
       - "${BOT_PORT}:8000"
-    env_file:
-      - ${MODE}.env
+    environment:
+      MODE: ${MODE}
+      CONFIG_PATH: ./bot_config.yaml
+      CORE_HOST: ${CORE_HOST}
+      CORE_PORT: ${CORE_PORT}
     networks:
       - service-net
 
   ml_service:
     build:
       context: ./ml
-      dockerfile: ./../configs/ml.Dockerfile
+      dockerfile: configs/dockerfiles/ml.Dockerfile
     image: model-${MODE}:${TAG}
     container_name: model_${MODE}
     volumes:
       - ${MODEL_FILE}:/app/best_context_model.pt
-    env_file:
-      - ${MODE}.env
+    environment:
+      MODE: ${MODE}
+      MODEL_FILE: ${MODEL_FILE}
     networks:
       - service-net
 

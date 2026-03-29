@@ -6,6 +6,7 @@ import (
 	"strings"
 	"time"
 
+	repository "github.com/Revachol/SpamBreaker_VK_back/internal/core/repository/interfaces"
 	"github.com/Revachol/SpamBreaker_VK_back/internal/domain"
 	"github.com/google/uuid"
 )
@@ -13,12 +14,12 @@ import (
 // ModerationUseCase содержит всю бизнес-логику проверки текстов.
 type ModerationUseCase struct {
 	classifier domain.Classifier
-	repo       domain.MessageRepository
+	repo       repository.MessageRepository
 }
 
 func NewModerationUseCase(
 	classifier domain.Classifier,
-	repo domain.MessageRepository,
+	repo repository.MessageRepository,
 ) *ModerationUseCase {
 	return &ModerationUseCase{
 		classifier: classifier,

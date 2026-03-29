@@ -1,4 +1,4 @@
-package telegram
+package utils
 
 import (
 	"context"
@@ -6,17 +6,17 @@ import (
 	"strings"
 	"time"
 
-	"github.com/Revachol/SpamBreaker_VK_back/bots/shared"
+	"github.com/Revachol/SpamBreaker_VK_back/internal/clients/telegram"
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
 )
 
 // Bot инкапсулирует telegram-бота и зависимости.
 type Bot struct {
 	api    *tgbotapi.BotAPI
-	client *shared.APIClient
+	client *telegram.APIClient
 }
 
-func NewBot(api *tgbotapi.BotAPI, client *shared.APIClient) *Bot {
+func NewBot(api *tgbotapi.BotAPI, client *telegram.APIClient) *Bot {
 	return &Bot{api: api, client: client}
 }
 

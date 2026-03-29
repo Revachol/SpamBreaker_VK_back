@@ -64,9 +64,9 @@ jobs:
           echo "$BUILD_ENV" > .env
           sed -i "s/^MODE=dev$/MODE=$MODE/" .env
           source .env
-          docker compose --env-file .env build main_service bot_service ml_service
+          docker compose --env-file .env build core_service bot_service ml_service
           mv .env $MODE.env
-          docker save -o all_images.tar model-$MODE:$TAG bot-$MODE:$TAG main-$MODE:$TAG
+          docker save -o all_images.tar model-$MODE:$TAG bot-$MODE:$TAG core-$MODE:$TAG
 
       - name: Deploy
         env:
