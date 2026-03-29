@@ -38,6 +38,7 @@ services:
     environment:
       MODE: ${MODE}
       CONFIG_PATH: ./bot_config.yaml
+      TELEGRAM_TOKEN: ${TELEGRAM_TOKEN}
       CORE_HOST: ${CORE_HOST}
       CORE_PORT: ${CORE_PORT}
     networks:
@@ -46,7 +47,7 @@ services:
   ml_service:
     build:
       context: ./ml
-      dockerfile: configs/dockerfiles/ml.Dockerfile
+      dockerfile: ./../infra/dockerfiles/ml.Dockerfile
     image: model-${MODE}:${TAG}
     container_name: model_${MODE}
     volumes:

@@ -61,20 +61,24 @@ jobs:
 
       - name: Prepare images
         run: |
+          TAG="$(cat VERSION)"
           echo "$BUILD_ENV" > .env
           sed -i "s/^MODE=dev$/MODE=$MODE/" .env
-          source .env
-          docker compose --env-file .env build core_service bot_service ml_service
+          sed -i "s/^TAG=.*$/TAG=$TAG/" .env
           mv .env $MODE.env
+          docker compose --env-file $MODE.env build core_service bot_service ml_service
           docker save -o all_images.tar model-$MODE:$TAG bot-$MODE:$TAG core-$MODE:$TAG
 
       - name: Deploy
         env:
           APP_DIR: /home/ubuntu/spambreaker
         run: |
-          scp -o StrictHostKeyChecking=no -i ~/.ssh/deploy_key all_images.tar $MODE.env docker-compose.yaml $SERVER_CONFIG:$APP_DIR
-          ssh -o StrictHostKeyChecking=no -i ~/.ssh/deploy_key $SERVER_CONFIG "docker load -i $APP_DIR/all_images.tar"
-          ssh -o StrictHostKeyChecking=no -i ~/.ssh/deploy_key $SERVER_CONFIG "cd $APP_DIR && docker compose --env-file $MODE.env up -d --force-recreate"
+          scp -o StrictHostKeyChecking=no -i ~/.ssh/deploy_key all_images.tar $MODE.env docker-compose.yaml \
+            $SERVER_CONFIG:$APP_DIR || echo "SCP error"
+          ssh -o StrictHostKeyChecking=no -i ~/.ssh/deploy_key $SERVER_CONFIG \
+            "docker load -i $APP_DIR/all_images.tar" || echo "Image load error"
+          ssh -o StrictHostKeyChecking=no -i ~/.ssh/deploy_key $SERVER_CONFIG \
+            "cd $APP_DIR && docker compose --env-file $MODE.env up -d --force-recreate" || echo "Run error"
           RESULT=$(ssh -o StrictHostKeyChecking=no -i ~/.ssh/deploy_key $SERVER_CONFIG "docker ps -q | wc --lines")
           if [[ "$RESULT" -eq "5" ]]; then
             echo "Success"

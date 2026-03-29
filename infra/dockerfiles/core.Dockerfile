@@ -11,7 +11,7 @@ RUN go mod download
 COPY .. .
 
 # Собираем статический бинарник
-RUN CGO_ENABLED=0 GOOS=linux go build -a -installsuffix cgo -o ./build/main ./cmd/server/main.go
+RUN CGO_ENABLED=0 GOOS=linux go build -a -installsuffix cgo -o ./build/main ./cmd/core/main.go
 
 # ---- Финальный образ ----
 FROM alpine:latest
@@ -24,7 +24,7 @@ WORKDIR /root/
 # Копируем скомпилированный бинарник из предыдущего этапа
 COPY --from=builder /app/build/main .
 COPY --from=builder /app/configs/core_config.yaml .
-COPY --from=builder /app/configs/migrations/* /app/migrations/
+COPY --from=builder /app/infra/migrations/* /app/migrations/
 
 # Порт, который слушает приложение (измените при необходимости)
 EXPOSE 8080
