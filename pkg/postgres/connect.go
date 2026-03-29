@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"strconv"
 
-	"github.com/Revachol/SpamBreaker_VK_back/internal/config"
+	"github.com/Revachol/SpamBreaker_VK_back/internal/main/config"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
@@ -14,12 +14,11 @@ func NewConnect(ctx context.Context, cfg *config.PostgresConfig) (*pgxpool.Pool,
 		return nil, fmt.Errorf("PostgreSQL port is empty")
 	}
 
-	// УБЕРИ эти строки - они пытаются получить значения из env переменных
-	host := cfg.Host         // ❌ Это ищет env переменную с именем "localhost"
-	sport := cfg.Port        // ❌ Это ищет env переменную с именем "5435"
-	user := cfg.User         // ❌ Это ищет env переменную с именем "postgres"
-	password := cfg.Password // ❌ Это ищет env переменную с именем "password"
-	base := cfg.Base         // ❌ Это ищет env переменную с именем "dating_app"
+	host := cfg.Host
+	sport := cfg.Port
+	user := cfg.User
+	password := cfg.Password
+	base := cfg.Base
 
 	// Преобразуем порт в число
 	port, err := strconv.Atoi(sport)
