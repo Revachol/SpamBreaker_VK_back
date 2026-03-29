@@ -21,7 +21,7 @@ func Run() {
 	}
 
 	// 2. Инфраструктурные зависимости.
-	mlAddr := fmt.Sprintf("%s:%s", cfg.ML.Host, cfg.ML.Port)
+	mlAddr := fmt.Sprintf("http://%s:%s", cfg.ML.Host, cfg.ML.Port)
 	mlClient := mlclient.NewClient(mlAddr)
 	pgx, err := postgres.NewConnect(context.Background(), &cfg.Postgres)
 	if err != nil {
@@ -37,7 +37,7 @@ func Run() {
 	router := httphandler.NewRouter(handler)
 
 	// 5. Старт.
-	coreAddr := fmt.Sprintf("%s:%s", cfg.Host, cfg.Port)
+	coreAddr := fmt.Sprintf("%s:%d", cfg.Host, cfg.Port)
 	logger.LOG.Infof("Core API starting on %s  |  ML service: %s", coreAddr, mlAddr)
 
 	if err := router.Run(coreAddr); err != nil {

@@ -23,7 +23,7 @@ type Config struct {
 	Cors        CORSConfig          `yaml:"cors"`
 	Logger      logger.LoggerConfig `yaml:"logger"`
 	Postgres    PostgresConfig      `yaml:"postgres"`
-	ML          MLConfig            `yaml:"ml"`
+	ML          ServiceConfig       `yaml:"ml"`
 }
 
 type CORSConfig struct {
@@ -35,7 +35,7 @@ type CORSConfig struct {
 	MaxAgeSeconds    int      `yaml:"max_age_seconds"`
 }
 
-type MLConfig struct {
+type ServiceConfig struct {
 	Host string
 	Port string
 }
@@ -57,7 +57,7 @@ type PostgresConfig struct {
 }
 
 func Load() (*Config, error) {
-	path := getEnv("CONFIG_PATH", "config/core_config.yaml")
+	path := getEnv("CONFIG_PATH", "./config/core_config.yaml")
 	data, err := os.ReadFile(path)
 	if err != nil {
 		return nil, fmt.Errorf("failed to read config file: %w", err)

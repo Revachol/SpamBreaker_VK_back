@@ -14,6 +14,7 @@ services:
       - "${CORE_PORT}:8080"
     environment:
       MODE: ${MODE}
+      CONFIG_PATH: ./core_config.yaml
       PG_HOST: ${PG_HOST}
       PG_PORT: ${PG_PORT}
       PG_BASE: ${PG_BASE}
@@ -36,6 +37,7 @@ services:
       - "${BOT_PORT}:8000"
     environment:
       MODE: ${MODE}
+      CONFIG_PATH: ./bot_config.yaml
       CORE_HOST: ${CORE_HOST}
       CORE_PORT: ${CORE_PORT}
     networks:

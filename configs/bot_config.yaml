@@ -7,3 +7,10 @@ app:
 
   logger:
     level: TRACE
+
+  telegram:
+    token: TELEGRAM_TOKEN
+
+  core_service:
+    host: CORE_HOST
+    port: CORE_PORT
