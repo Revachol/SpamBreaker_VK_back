@@ -23,7 +23,7 @@ WORKDIR /root/
 
 # Копируем скомпилированный бинарник из предыдущего этапа
 COPY --from=builder /app/build/main .
-COPY --from=builder /app/configs/main_config.yaml .
+COPY --from=builder /app/configs/core_config.yaml .
 COPY --from=builder /app/configs/migrations/* /app/migrations/
 
 # Порт, который слушает приложение (измените при необходимости)

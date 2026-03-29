@@ -1,10 +1,12 @@
 package config
 
 import (
+	"fmt"
 	"os"
 	"time"
 
 	"github.com/Revachol/SpamBreaker_VK_back/pkg/logger"
+	"gopkg.in/yaml.v3"
 )
 
 type appConfig struct {
@@ -34,7 +36,8 @@ type CORSConfig struct {
 }
 
 type MLConfig struct {
-	BaseURL string
+	Host string
+	Port string
 }
 
 type PostgresConfig struct {
@@ -53,11 +56,16 @@ type PostgresConfig struct {
 	Migrations string `yaml:"migrations"`
 }
 
-func Load() *Config {
+func Load() (*Config, error) {
+	path := getEnv("CONFIG_PATH", "config/core_config.yaml")
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read config file: %w", err)
+	}
+
 	var config appConfig
 	config.App.Name = "App"
-	config.App.Mode = getEnv("MODE", "dev")
-	config.App.Host = "localhost"
+	config.App.Host = "0.0.0.0"
 	config.App.Port = 8080
 	config.App.SwaggerPath = "./api/server/swagger.json"
 
@@ -76,11 +84,6 @@ func Load() *Config {
 		Timestamp: true,
 	}
 	config.App.Postgres = PostgresConfig{
-		Host:                getEnv("PG_HOST", "localhost"),
-		Port:                getEnv("PG_PORT", "5432"),
-		Base:                getEnv("PG_BASE", "spambreaker"),
-		User:                getEnv("PG_USER", "uservice"),
-		Password:            getEnv("PG_PSWD", "password"),
 		MinConns:            1,
 		MaxConns:            10,
 		MaxLife:             time.Hour,
@@ -90,10 +93,24 @@ func Load() *Config {
 		Migrated:   false,
 		Migrations: "./infra/migrations/",
 	}
-	config.App.ML = MLConfig{
-		BaseURL: getEnv("ML_SERVICE_URL", "http://localhost:8000"),
+	if err := yaml.Unmarshal(data, &config); err != nil {
+		return nil, fmt.Errorf("failed to parse config: %w", err)
 	}
-	return &config.App
+	loadEnv(&config.App)
+	return &config.App, nil
+}
+
+func loadEnv(cfg *Config) {
+	cfg.Mode = getEnv(cfg.Mode, "dev")
+
+	cfg.Postgres.Host = getEnv(cfg.Postgres.Host, "localhost")
+	cfg.Postgres.Port = getEnv(cfg.Postgres.Port, "5432")
+	cfg.Postgres.Base = getEnv(cfg.Postgres.Base, "spambreaker")
+	cfg.Postgres.User = getEnv(cfg.Postgres.User, "uservice")
+	cfg.Postgres.Password = getEnv(cfg.Postgres.Password, "password")
+
+	cfg.ML.Host = getEnv(cfg.ML.Host, "localhost")
+	cfg.ML.Port = getEnv(cfg.ML.Port, "8080")
 }
 
 func getEnv(key, fallback string) string {

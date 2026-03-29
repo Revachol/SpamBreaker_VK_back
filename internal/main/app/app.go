@@ -3,25 +3,29 @@ package app
 import (
 	"context"
 	"fmt"
-	"log"
 
 	mlclient "github.com/Revachol/SpamBreaker_VK_back/internal/clients/ml"
 	"github.com/Revachol/SpamBreaker_VK_back/internal/main/config"
 	"github.com/Revachol/SpamBreaker_VK_back/internal/main/handlers/http"
 	"github.com/Revachol/SpamBreaker_VK_back/internal/main/repository/postgres"
 	"github.com/Revachol/SpamBreaker_VK_back/internal/main/service"
+	"github.com/Revachol/SpamBreaker_VK_back/pkg/logger"
 	"github.com/Revachol/SpamBreaker_VK_back/pkg/postgres"
 )
 
 func Run() {
 	// 1. Конфигурация из ENV.
-	cfg := config.Load()
+	cfg, err := config.Load()
+	if err != nil {
+		logger.LOG.Fatal(err)
+	}
 
 	// 2. Инфраструктурные зависимости.
-	mlClient := mlclient.NewClient(cfg.ML.BaseURL)
+	mlAddr := fmt.Sprintf("%s:%s", cfg.ML.Host, cfg.ML.Port)
+	mlClient := mlclient.NewClient(mlAddr)
 	pgx, err := postgres.NewConnect(context.Background(), &cfg.Postgres)
 	if err != nil {
-		log.Fatal(err)
+		logger.LOG.Fatal(err)
 	}
 	repo := repository.NewMessageRepository(pgx)
 
@@ -33,10 +37,10 @@ func Run() {
 	router := httphandler.NewRouter(handler)
 
 	// 5. Старт.
-	addr := fmt.Sprintf(":%s", cfg.Port)
-	log.Printf("Core API starting on %s  |  ML service: %s", addr, cfg.ML.BaseURL)
+	coreAddr := fmt.Sprintf("%s:%s", cfg.Host, cfg.Port)
+	logger.LOG.Infof("Core API starting on %s  |  ML service: %s", coreAddr, mlAddr)
 
-	if err := router.Run(addr); err != nil {
-		log.Fatalf("server error: %v", err)
+	if err := router.Run(coreAddr); err != nil {
+		logger.LOG.Fatalf("server error: %v", err)
 	}
 }

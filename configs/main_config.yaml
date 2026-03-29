@@ -1,5 +1,5 @@
 app:
-  name: Gateway
+  name: CORE
   host: 0.0.0.0
   port: 8080
   prefix: /api/v1
@@ -25,5 +25,5 @@ app:
     migrations: ./data/migrations
 
   ml_service:
-    host: localhost
-    port: 8000
+    host: ML_HOST
+    port: ML_PORT
