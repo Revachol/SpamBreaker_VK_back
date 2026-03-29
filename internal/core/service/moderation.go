@@ -6,8 +6,8 @@ import (
 	"strings"
 	"time"
 
+	repository "github.com/Revachol/SpamBreaker_VK_back/internal/core/repository/interfaces"
 	"github.com/Revachol/SpamBreaker_VK_back/internal/domain"
-	repository "github.com/Revachol/SpamBreaker_VK_back/internal/main/repository/interfaces"
 	"github.com/google/uuid"
 )
 

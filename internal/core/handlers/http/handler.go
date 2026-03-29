@@ -4,7 +4,7 @@ import (
 	"net/http"
 	"strconv"
 
-	"github.com/Revachol/SpamBreaker_VK_back/internal/main/service"
+	"github.com/Revachol/SpamBreaker_VK_back/internal/core/service"
 	"github.com/gin-gonic/gin"
 )
 

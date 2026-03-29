@@ -34,7 +34,7 @@ type ServiceConfig struct {
 }
 
 func Load() (*Config, error) {
-	path := getEnv("CONFIG_PATH", "./config/bot_config.yaml")
+	path := getEnv("CONFIG_PATH", "./configs/bot_config.yaml")
 	data, err := os.ReadFile(path)
 	if err != nil {
 		return nil, fmt.Errorf("failed to read config file: %w", err)

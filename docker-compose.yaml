@@ -2,7 +2,7 @@ services:
   core_service:
     build:
       context: .
-      dockerfile: infra/dockerfiles/service.Dockerfile
+      dockerfile: infra/dockerfiles/core.Dockerfile
     image: core-${MODE}:${TAG}
     container_name: core_${MODE}
     depends_on:

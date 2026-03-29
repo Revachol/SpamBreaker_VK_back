@@ -5,10 +5,10 @@ import (
 	"fmt"
 
 	mlclient "github.com/Revachol/SpamBreaker_VK_back/internal/clients/ml"
-	"github.com/Revachol/SpamBreaker_VK_back/internal/main/config"
-	"github.com/Revachol/SpamBreaker_VK_back/internal/main/handlers/http"
-	"github.com/Revachol/SpamBreaker_VK_back/internal/main/repository/postgres"
-	"github.com/Revachol/SpamBreaker_VK_back/internal/main/service"
+	"github.com/Revachol/SpamBreaker_VK_back/internal/core/config"
+	"github.com/Revachol/SpamBreaker_VK_back/internal/core/handlers/http"
+	"github.com/Revachol/SpamBreaker_VK_back/internal/core/repository/postgres"
+	"github.com/Revachol/SpamBreaker_VK_back/internal/core/service"
 	"github.com/Revachol/SpamBreaker_VK_back/pkg/logger"
 	"github.com/Revachol/SpamBreaker_VK_back/pkg/postgres"
 )
