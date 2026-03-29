@@ -2,7 +2,7 @@ services:
   main_service:
     build:
       context: .
-      dockerfile: configs/service.Dockerfile
+      dockerfile: infra/dockerfiles/service.Dockerfile
     image: main-${MODE}:${TAG}
     container_name: main_${MODE}
     depends_on:
@@ -20,7 +20,7 @@ services:
   bot_service:
     build:
       context: .
-      dockerfile: configs/bot.Dockerfile
+      dockerfile: infra/dockerfiles/bot.Dockerfile
     image: bot-${MODE}:${TAG}
     container_name: bot_${MODE}
     depends_on:
@@ -35,7 +35,7 @@ services:
   ml_service:
     build:
       context: ./ml
-      dockerfile: ./../configs/ml.Dockerfile
+      dockerfile: configs/dockerfiles/ml.Dockerfile
     image: model-${MODE}:${TAG}
     container_name: model_${MODE}
     volumes:

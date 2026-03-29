@@ -8,7 +8,7 @@ COPY go.mod go.sum ./
 RUN go mod download
 
 # Копируем исходный код
-COPY . .
+COPY .. .
 
 # Собираем статический бинарник
 RUN CGO_ENABLED=0 GOOS=linux go build -a -installsuffix cgo -o ./build/main ./cmd/server/main.go
@@ -23,6 +23,8 @@ WORKDIR /root/
 
 # Копируем скомпилированный бинарник из предыдущего этапа
 COPY --from=builder /app/build/main .
+COPY --from=builder /app/configs/main_config.yaml .
+COPY --from=builder /app/configs/migrations/* /app/migrations/
 
 # Порт, который слушает приложение (измените при необходимости)
 EXPOSE 8080
