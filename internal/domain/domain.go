@@ -29,13 +29,3 @@ type CheckRecord struct {
 type Classifier interface {
 	Classify(ctx context.Context, text string) (*Verdict, error)
 }
-
-// ---------- Port: хранилище ----------
-
-// MessageRepository — абстракция над БД.
-// Реализация появится позже (PostgreSQL).
-type MessageRepository interface {
-	Save(ctx context.Context, record *CheckRecord) error
-	List(ctx context.Context, limit, offset int) ([]*CheckRecord, error)
-	GetByID(ctx context.Context, id string) (*CheckRecord, error)
-}

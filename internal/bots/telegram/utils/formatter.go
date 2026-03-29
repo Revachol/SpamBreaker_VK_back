@@ -1,9 +1,9 @@
-package telegram
+package utils
 
 import (
 	"fmt"
 
-	"github.com/Revachol/SpamBreaker_VK_back/bots/shared"
+	"github.com/Revachol/SpamBreaker_VK_back/internal/clients/telegram"
 )
 
 // labelMeta — всё для отображения одного лейбла.
@@ -19,7 +19,7 @@ var labels = map[string]labelMeta{
 }
 
 // formatVerdict формирует итоговое сообщение для пользователя.
-func formatVerdict(r *shared.CheckResponse) string {
+func formatVerdict(r *telegram.CheckResponse) string {
 	meta, ok := labels[r.Label]
 	if !ok {
 		meta = labelMeta{emoji: "❓", title: r.Label}
