@@ -41,8 +41,8 @@ jobs:
     runs-on: ubuntu-latest
     needs: lint-and-test
     env:
-      MODE: ${{ github.ref_name == 'refs/heads/main' && 'prod' || 'test' }}
-      BUILD_ENV: ${{ github.ref_name == 'refs/heads/main' && secrets.PROD_ENV || secrets.TEST_ENV }}
+      MODE: ${{ github.ref_name == 'main' && 'prod' || 'test' }}
+      BUILD_ENV: ${{ github.ref_name == 'main' && secrets.PROD_ENV || secrets.TEST_ENV }}
       SERVER_CONFIG: ${{ secrets.SSH_CONFIG }}
 
     steps:
