@@ -10,11 +10,14 @@ services:
         condition: service_started
       postgres:
         condition: service_healthy
+    volumes:
+      - ./configs/core_config.yaml:/app/config.yaml
+      - ./infra/migrations:/app/migrations
     ports:
-      - "${CORE_PORT}:8080"
+      - "${CORE_EXPORT}:8080"
     environment:
       MODE: ${MODE}
-      CONFIG_PATH: ./core_config.yaml
+      CONFIG_PATH: ./config.yaml
       PG_HOST: ${PG_HOST}
       PG_PORT: ${PG_PORT}
       PG_BASE: ${PG_BASE}
@@ -33,11 +36,13 @@ services:
     container_name: bot_${MODE}
     depends_on:
       - core_service
+    volumes:
+      - ./configs/bot_config.yaml:/app/config.yaml
     ports:
-      - "${BOT_PORT}:8000"
+      - "${BOT_EXPORT}:8000"
     environment:
       MODE: ${MODE}
-      CONFIG_PATH: ./bot_config.yaml
+      CONFIG_PATH: ./config.yaml
       TELEGRAM_TOKEN: ${TELEGRAM_TOKEN}
       CORE_HOST: ${CORE_HOST}
       CORE_PORT: ${CORE_PORT}
@@ -83,7 +88,7 @@ services:
     depends_on:
       - postgres
     ports:
-      - "${AD_PORT}:8080"
+      - "${AD_EXPORT}:8080"
     networks:
       - service-net
 

@@ -19,12 +19,10 @@ FROM alpine:latest
 # Устанавливаем ca-certificates и tzdata для корректной работы HTTPS и временных зон
 RUN apk --no-cache add ca-certificates tzdata
 
-WORKDIR /root/
+WORKDIR /app
 
 # Копируем скомпилированный бинарник из предыдущего этапа
 COPY --from=builder /app/build/main .
-COPY --from=builder /app/configs/core_config.yaml .
-COPY --from=builder /app/infra/migrations/* /app/migrations/
 
 # Порт, который слушает приложение (измените при необходимости)
 EXPOSE 8080

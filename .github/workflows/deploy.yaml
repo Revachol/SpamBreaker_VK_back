@@ -65,24 +65,31 @@ jobs:
           echo "$BUILD_ENV" > .env
           sed -i "s/^MODE=dev$/MODE=$MODE/" .env
           sed -i "s/^TAG=.*$/TAG=$TAG/" .env
-          mv .env $MODE.env
-          docker compose --env-file $MODE.env build core_service bot_service ml_service
+          docker compose build core_service bot_service ml_service
           docker save -o all_images.tar model-$MODE:$TAG bot-$MODE:$TAG core-$MODE:$TAG
 
       - name: Deploy
         env:
           APP_DIR: /home/ubuntu/spambreaker
         run: |
-          scp -o StrictHostKeyChecking=no -i ~/.ssh/deploy_key all_images.tar $MODE.env docker-compose.yaml \
-            $SERVER_CONFIG:$APP_DIR || echo "SCP error"
           ssh -o StrictHostKeyChecking=no -i ~/.ssh/deploy_key $SERVER_CONFIG \
-            "docker load -i $APP_DIR/all_images.tar" || echo "Image load error"
+            "cd $APP_DIR/$MODE && docker compose down" || echo "Down error"
+          scp -o StrictHostKeyChecking=no -i ~/.ssh/deploy_key all_images.tar \
+            $SERVER_CONFIG:$APP_DIR/$MODE || echo "SCP image error"
+          scp -o StrictHostKeyChecking=no -i ~/.ssh/deploy_key -r .env docker-compose.yaml ./configs/ \
+            $SERVER_CONFIG:$APP_DIR/$MODE/ || echo "SCP configs error"
+          scp -o StrictHostKeyChecking=no -i ~/.ssh/deploy_key -r ./infra/migrations/ \
+            $SERVER_CONFIG:$APP_DIR/$MODE/infra/ || echo "SCP configs error"
           ssh -o StrictHostKeyChecking=no -i ~/.ssh/deploy_key $SERVER_CONFIG \
-            "cd $APP_DIR && docker compose --env-file $MODE.env up -d --force-recreate" || echo "Run error"
-          RESULT=$(ssh -o StrictHostKeyChecking=no -i ~/.ssh/deploy_key $SERVER_CONFIG "docker ps -q | wc --lines")
-          if [[ "$RESULT" -eq "5" ]]; then
+            "docker load -i $APP_DIR/$MODE/all_images.tar" || echo "Image load error"
+          ssh -o StrictHostKeyChecking=no -i ~/.ssh/deploy_key $SERVER_CONFIG \
+            "cd $APP_DIR/$MODE && docker compose up -d --force-recreate" || echo "Run error"
+          RESULT=$(ssh -o StrictHostKeyChecking=no -i ~/.ssh/deploy_key $SERVER_CONFIG "docker ps -q | wc --l")
+          EXPECT=$(ssh -o StrictHostKeyChecking=no -i ~/.ssh/deploy_key $SERVER_CONFIG \
+            "cd $APP_DIR/$MODE && docker compose config --services | wc -l")
+          if [[ "$RESULT" -eq "$EXPECT" ]]; then
             echo "Success"
           else
-            echo "Expected 5 containers, got $RESULT"
+            echo "Expected $EXPECT containers, got $RESULT"
             exit 1
           fi

@@ -1,7 +1,7 @@
 app:
   name: Bot
   host: 0.0.0.0
-  port: 8000
+  port: 8080
   prefix: /api/v1
   swagger_path: ./data/docs/server.json
 
