@@ -21,7 +21,7 @@ type Config struct {
 	SwaggerPath string              `yaml:"swagger_path"`
 	Logger      logger.LoggerConfig `yaml:"logger"`
 	Telegram    TelegramConfig      `yaml:"telegram"`
-	Core        ServiceConfig       `yaml:"core"`
+	Core        ServiceConfig       `yaml:"core_service"`
 }
 
 type TelegramConfig struct {

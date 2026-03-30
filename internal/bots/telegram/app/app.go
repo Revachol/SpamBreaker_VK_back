@@ -36,8 +36,8 @@ func Run() {
 	logger.LOG.Infof("authorized as @%s", botAPI.Self.UserName)
 
 	// Общий клиент к Core API.
-	core_addr := fmt.Sprintf("http://%s:%s", cfg.Core.Host, cfg.Core.Port)
-	apiClient := telegram.NewAPIClient(core_addr)
+	coreAddr := fmt.Sprintf("http://%s:%s", cfg.Core.Host, cfg.Core.Port)
+	apiClient := telegram.NewAPIClient(coreAddr)
 
 	// Старт бота.
 	bot := utils.NewBot(botAPI, apiClient)
