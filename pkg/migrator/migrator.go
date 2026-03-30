@@ -12,7 +12,7 @@ type Migrator struct {
 	m *migrate.Migrate
 }
 
-func NewMigrator(databaseURL, migrationsPath string) (*Migrator, error) {
+func New(databaseURL, migrationsPath string) (*Migrator, error) {
 	m, err := migrate.New(
 		fmt.Sprintf("file://%s", migrationsPath),
 		databaseURL,

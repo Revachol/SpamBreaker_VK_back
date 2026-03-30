@@ -22,7 +22,7 @@ app:
     user: PG_USER
     password: PG_PSWD
     migrated: true
-    migrations: ./data/migrations
+    migrations: ./migrations
 
   ml_service:
     host: ML_HOST

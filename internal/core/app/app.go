@@ -20,6 +20,8 @@ func Run() {
 		logger.LOG.Fatal(err)
 	}
 
+	log := logger.New(&cfg.Logger)
+
 	// 2. Инфраструктурные зависимости.
 	mlAddr := fmt.Sprintf("http://%s:%s", cfg.ML.Host, cfg.ML.Port)
 	mlClient := mlclient.NewClient(mlAddr)
@@ -28,6 +30,7 @@ func Run() {
 		logger.LOG.Fatal(err)
 	}
 	repo := repository.NewMessageRepository(pgx)
+	runMigrations(&cfg.Postgres, log)
 
 	// 3. Бизнес-логика.
 	moderationUC := service.NewModerationUseCase(mlClient, repo)
@@ -38,9 +41,9 @@ func Run() {
 
 	// 5. Старт.
 	coreAddr := fmt.Sprintf("%s:%d", cfg.Host, cfg.Port)
-	logger.LOG.Infof("Core API starting on %s  |  ML service: %s", coreAddr, mlAddr)
+	log.Infof("Core API starting on %s  |  ML service: %s", coreAddr, mlAddr)
 
 	if err := router.Run(coreAddr); err != nil {
-		logger.LOG.Fatalf("server error: %v", err)
+		log.Fatalf("server error: %v", err)
 	}
 }
