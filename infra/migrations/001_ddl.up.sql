@@ -13,5 +13,5 @@ CREATE TABLE message
     text VARCHAR(255) NOT NULL,
     status VARCHAR(16) NOT NULL,
     toxicity_score INT,
-    created_at TIMESTAMPZ NOT NULL DEFAULT NOW()
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );

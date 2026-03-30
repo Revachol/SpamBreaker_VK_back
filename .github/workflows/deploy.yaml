@@ -41,8 +41,8 @@ jobs:
     runs-on: ubuntu-latest
     needs: lint-and-test
     env:
-      MODE: ${{ github.ref_name == 'refs/heads/main' && 'prod' || 'test' }}
-      BUILD_ENV: ${{ github.ref_name == 'refs/heads/main' && secrets.PROD_ENV || secrets.TEST_ENV }}
+      MODE: ${{ github.ref_name == 'main' && 'prod' || 'test' }}
+      BUILD_ENV: ${{ github.ref_name == 'main' && secrets.PROD_ENV || secrets.TEST_ENV }}
       SERVER_CONFIG: ${{ secrets.SSH_CONFIG }}
 
     steps:
@@ -73,6 +73,8 @@ jobs:
           APP_DIR: /home/ubuntu/spambreaker
         run: |
           ssh -o StrictHostKeyChecking=no -i ~/.ssh/deploy_key $SERVER_CONFIG \
+            "mkdir -p $APP_DIR/$MODE/infra"
+          ssh -o StrictHostKeyChecking=no -i ~/.ssh/deploy_key $SERVER_CONFIG \
             "cd $APP_DIR/$MODE && docker compose down" || echo "Down error"
           scp -o StrictHostKeyChecking=no -i ~/.ssh/deploy_key all_images.tar \
             $SERVER_CONFIG:$APP_DIR/$MODE || echo "SCP image error"
@@ -84,7 +86,8 @@ jobs:
             "docker load -i $APP_DIR/$MODE/all_images.tar" || echo "Image load error"
           ssh -o StrictHostKeyChecking=no -i ~/.ssh/deploy_key $SERVER_CONFIG \
             "cd $APP_DIR/$MODE && docker compose up -d --force-recreate" || echo "Run error"
-          RESULT=$(ssh -o StrictHostKeyChecking=no -i ~/.ssh/deploy_key $SERVER_CONFIG "docker ps -q | wc --l")
+          RESULT=$(ssh -o StrictHostKeyChecking=no -i ~/.ssh/deploy_key $SERVER_CONFIG \
+            "cd $APP_DIR/$MODE && docker compose ps -q | wc -l")
           EXPECT=$(ssh -o StrictHostKeyChecking=no -i ~/.ssh/deploy_key $SERVER_CONFIG \
             "cd $APP_DIR/$MODE && docker compose config --services | wc -l")
           if [[ "$RESULT" -eq "$EXPECT" ]]; then

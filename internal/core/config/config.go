@@ -23,7 +23,7 @@ type Config struct {
 	Cors        CORSConfig          `yaml:"cors"`
 	Logger      logger.LoggerConfig `yaml:"logger"`
 	Postgres    PostgresConfig      `yaml:"postgres"`
-	ML          ServiceConfig       `yaml:"ml"`
+	ML          ServiceConfig       `yaml:"ml_service"`
 }
 
 type CORSConfig struct {
