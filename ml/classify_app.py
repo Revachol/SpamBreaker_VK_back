@@ -1,11 +1,9 @@
-
-
 """
-FastAPI-сервис для TinyBERT Sentiment + Toxicity.
+FastAPI-сервис для TinyBERT Sentiment.
 
 Два эндпоинта:
-  POST /classify       — одно сообщение → sentiment + toxicity
-  POST /classify_batch — список сообщений → sentiment + toxicity для каждого
+  POST /classify       — одно сообщение
+  POST /classify_batch — список сообщений
 """
 
 import torch
@@ -22,25 +20,26 @@ class ClassifyRequest(PydanticBase):
     text: str
 
 class ClassifyResponse(PydanticBase):
-    text: str
-    sentiment: str
-    sentiment_confidence: float
-    sentiment_scores: dict[str, float]
-    toxic: bool
-    toxicity_confidence: float
-    toxicity_scores: dict[str, float]
+    label: str
+    confidence: float
+    all_scores: dict[str, float]
 
 class BatchRequest(PydanticBase):
     messages: list[str]
 
+class BatchMessageResult(PydanticBase):
+    text: str
+    label: str
+    confidence: float
+    all_scores: dict[str, float]
+
 class BatchResponse(PydanticBase):
-    results: list[ClassifyResponse]
+    results: list[BatchMessageResult]
 
 
 # ── Константы ────────────────────────────────────────────────────────
 
-SENT_LABELS = {0: "neutral", 1: "positive", 2: "negative"}
-TOX_LABELS = {0: "safe", 1: "toxic"}
+LABELS = {0: "neutral", 1: "positive", 2: "negative"}
 TEACHER_NAME = "blanchefort/rubert-base-cased-sentiment"
 MAX_LEN = 128
 CHECKPOINT = "model.pt"
@@ -121,11 +120,10 @@ class TinyBERTStudent(nn.Module):
 
 # ── Инициализация ───────────────────────────────────────────────────
 
-app = FastAPI(title="TinyBERT Sentiment + Toxicity")
+app = FastAPI(title="TinyBERT Sentiment Classifier")
 
 tokenizer = BertTokenizer.from_pretrained(TEACHER_NAME)
 
-# Загрузка модели
 ckpt = torch.load(CHECKPOINT, map_location=DEVICE, weights_only=False)
 model_config = ckpt["config"]
 
@@ -140,16 +138,10 @@ model = TinyBERTStudent(
     pad_token_id=tokenizer.pad_token_id,
 ).to(DEVICE)
 
-# Toxicity head
-model.toxicity_head = nn.Linear(model_config["hidden_dim"], 2).to(DEVICE)
-
-# Загрузка весов
-model.load_state_dict(ckpt["model_state_dict"])
+model.load_state_dict(ckpt["model_state_dict"], strict=False)
 model.eval()
 
 print(f"Model loaded on {DEVICE}")
-print(f"Sentiment F1: {ckpt.get('sentiment_f1', 'N/A')}")
-print(f"Toxicity F1:  {ckpt.get('toxicity_f1', 'N/A')}")
 
 
 # ── Хелперы ──────────────────────────────────────────────────────────
@@ -162,56 +154,43 @@ def _tokenize(text: str) -> dict[str, torch.Tensor]:
     return {k: v.to(DEVICE) for k, v in enc.items()}
 
 
-def _classify_text(text: str) -> ClassifyResponse:
+def _classify_text(text: str) -> dict:
     enc = _tokenize(text)
     with torch.no_grad():
         out = model(**enc)
+        probs = F.softmax(out["logits"], dim=-1).squeeze(0)
+        best = int(probs.argmax())
+        scores = {LABELS[i]: round(probs[i].item(), 4) for i in range(3)}
 
-        # Sentiment
-        s_probs = F.softmax(out["logits"], dim=-1).squeeze(0)
-        s_id = int(s_probs.argmax())
-        s_scores = {SENT_LABELS[i]: round(s_probs[i].item(), 4) for i in range(3)}
-
-        # Toxicity
-        t_probs = F.softmax(model.toxicity_head(out["cls_hidden"]), dim=-1).squeeze(0)
-        t_id = int(t_probs.argmax())
-        t_scores = {TOX_LABELS[i]: round(t_probs[i].item(), 4) for i in range(2)}
-
-    return ClassifyResponse(
-        text=text,
-        sentiment=SENT_LABELS[s_id],
-        sentiment_confidence=s_scores[SENT_LABELS[s_id]],
-        sentiment_scores=s_scores,
-        toxic=(t_id == 1),
-        toxicity_confidence=t_scores[TOX_LABELS[t_id]],
-        toxicity_scores=t_scores,
-    )
+    return {
+        "label": LABELS[best],
+        "confidence": scores[LABELS[best]],
+        "all_scores": scores,
+    }
 
 
 # ── Эндпоинты ────────────────────────────────────────────────────────
 
 @app.post("/classify", response_model=ClassifyResponse)
 def classify(req: ClassifyRequest):
-    """Классификация одного сообщения → sentiment + toxicity."""
     if not req.text.strip():
         raise HTTPException(status_code=422, detail="text must not be empty")
-    return _classify_text(req.text)
+    return ClassifyResponse(**_classify_text(req.text))
 
 
 @app.post("/classify_batch", response_model=BatchResponse)
 def classify_batch(req: BatchRequest):
-    """Классификация списка сообщений."""
     if not req.messages:
         raise HTTPException(status_code=422, detail="messages must not be empty")
-    results = [_classify_text(text) for text in req.messages if text.strip()]
+    results = []
+    for text in req.messages:
+        if text.strip():
+            data = _classify_text(text)
+            data["text"] = text
+            results.append(BatchMessageResult(**data))
     return BatchResponse(results=results)
 
 
 @app.get("/health")
 def health():
-    return {
-        "status": "ok",
-        "device": str(DEVICE),
-        "sentiment_f1": ckpt.get("sentiment_f1"),
-        "toxicity_f1": ckpt.get("toxicity_f1"),
-    }
+    return {"status": "ok", "device": str(DEVICE)}
