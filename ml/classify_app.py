@@ -43,7 +43,7 @@ SENT_LABELS = {0: "neutral", 1: "positive", 2: "negative"}
 TOX_LABELS = {0: "safe", 1: "toxic"}
 TEACHER_NAME = "blanchefort/rubert-base-cased-sentiment"
 MAX_LEN = 128
-CHECKPOINT = "tinybert_combined.pt"
+CHECKPOINT = "model.pt"
 DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 

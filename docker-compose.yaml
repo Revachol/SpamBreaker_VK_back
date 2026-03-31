@@ -56,7 +56,7 @@ services:
     image: model-${MODE}:${TAG}
     container_name: model_${MODE}
     volumes:
-      - ${MODEL_FILE}:/app/best_context_model.pt
+      - ${MODEL_FILE}:/app/model.pt
     environment:
       MODE: ${MODE}
       MODEL_FILE: ${MODEL_FILE}
