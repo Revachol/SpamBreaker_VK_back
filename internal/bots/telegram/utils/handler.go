@@ -111,7 +111,7 @@ func (b *Bot) handleCommand(msg *tgbotapi.Message) error {
 	reply := tgbotapi.NewMessage(msg.Chat.ID, text)
 	reply.ParseMode = tgbotapi.ModeMarkdown
 	if _, err := b.api.Send(reply); err != nil {
-		return expectation.BotCommandAnswetError
+		return expectation.BotCommandAnswerError
 	}
 	return nil
 }
