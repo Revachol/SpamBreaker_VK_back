@@ -7,10 +7,12 @@ app:
 
   cors:
     allowed_origins:
-      - http://127.0.0.1:8001
-      - http://localhost:8001
-      - http://217.16.17.116:8001
-      - http://terabithia.online
+      - http://127.0.0.1:8080
+      - http://localhost:8080
+      - http://87.239.104.16:8080
+      - http://127.0.0.1:8070
+      - http://localhost:8070
+      - http://87.239.104.16:8070
 
   logger:
     level: TRACE

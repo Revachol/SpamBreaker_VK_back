@@ -4,6 +4,7 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/Revachol/SpamBreaker_VK_back/internal/core/config"
 	httpmetric "github.com/Revachol/SpamBreaker_VK_back/internal/metrics/http"
 	"github.com/Revachol/SpamBreaker_VK_back/internal/middleware"
 	"github.com/Revachol/SpamBreaker_VK_back/pkg/logger"
@@ -13,14 +14,14 @@ import (
 )
 
 // NewRouter собирает gin.Engine с маршрутами и middleware.
-func NewRouter(h *Handler, reg *prometheus.Registry, name string, l logger.Log) *gin.Engine {
+func NewRouter(h *Handler, reg *prometheus.Registry, cfg config.Config, l logger.Log) *gin.Engine {
 	r := gin.New()
 
-	coll := httpmetric.NewPrometheusHttpCollector(name, reg)
+	coll := httpmetric.NewPrometheusHttpCollector(cfg.Name, reg)
 	r.Use(httpmetric.Middleware(coll))
 	r.Use(gin.Recovery())
 	r.Use(middleware.LogMiddleware(l))
-	r.Use(corsMiddleware())
+	r.Use(middleware.CORSMiddleware(&cfg.Cors))
 
 	// Health-check — используется Docker и оркестраторами.
 	r.GET("/health", func(c *gin.Context) {
@@ -37,19 +38,4 @@ func NewRouter(h *Handler, reg *prometheus.Registry, name string, l logger.Log) 
 	}
 
 	return r
-}
-
-// corsMiddleware — разрешаем запросы от любого origin (для хакатона достаточно).
-func corsMiddleware() gin.HandlerFunc {
-	return func(c *gin.Context) {
-		c.Header("Access-Control-Allow-Origin", "*")
-		c.Header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
-		c.Header("Access-Control-Allow-Headers", "Content-Type, Authorization")
-
-		if c.Request.Method == http.MethodOptions {
-			c.AbortWithStatus(http.StatusNoContent)
-			return
-		}
-		c.Next()
-	}
 }
