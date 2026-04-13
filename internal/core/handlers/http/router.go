@@ -4,21 +4,22 @@ import (
 	"net/http"
 	"time"
 
-	middlewaremetric "github.com/Revachol/SpamBreaker_VK_back/internal/metrics/middleware"
-	prometheusmetric "github.com/Revachol/SpamBreaker_VK_back/internal/metrics/prometheus"
+	httpmetric "github.com/Revachol/SpamBreaker_VK_back/internal/metrics/http"
+	"github.com/Revachol/SpamBreaker_VK_back/internal/middleware"
+	"github.com/Revachol/SpamBreaker_VK_back/pkg/logger"
 	"github.com/gin-gonic/gin"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 )
 
 // NewRouter собирает gin.Engine с маршрутами и middleware.
-func NewRouter(reg *prometheus.Registry, h *Handler) *gin.Engine {
+func NewRouter(h *Handler, reg *prometheus.Registry, name string, l logger.Log) *gin.Engine {
 	r := gin.New()
 
-	coll := prometheusmetric.NewPrometheusHttpMetrics("Core", reg)
-	r.Use(middlewaremetric.NewHttpMetricCollector(coll).Middleware())
+	coll := httpmetric.NewPrometheusHttpCollector(name, reg)
+	r.Use(httpmetric.Middleware(coll))
 	r.Use(gin.Recovery())
-	r.Use(loggerMiddleware())
+	r.Use(middleware.LogMiddleware(l))
 	r.Use(corsMiddleware())
 
 	// Health-check — используется Docker и оркестраторами.
@@ -36,34 +37,6 @@ func NewRouter(reg *prometheus.Registry, h *Handler) *gin.Engine {
 	}
 
 	return r
-}
-
-// loggerMiddleware — минимальный структурированный лог каждого запроса.
-func loggerMiddleware() gin.HandlerFunc {
-	return func(c *gin.Context) {
-		start := time.Now()
-		c.Next()
-		latency := time.Since(start)
-
-		gin.DefaultWriter.Write([]byte(
-			time.Now().Format("2006-01-02 15:04:05") + " | " +
-				statusColor(c.Writer.Status()) +
-				" | " + latency.String() +
-				" | " + c.Request.Method +
-				" " + c.Request.URL.Path + "\n",
-		))
-	}
-}
-
-func statusColor(code int) string {
-	switch {
-	case code >= 500:
-		return "5xx"
-	case code >= 400:
-		return "4xx"
-	default:
-		return "2xx"
-	}
 }
 
 // corsMiddleware — разрешаем запросы от любого origin (для хакатона достаточно).

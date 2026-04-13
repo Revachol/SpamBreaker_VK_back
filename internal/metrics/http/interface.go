@@ -1,7 +1,7 @@
-package interfaces
+package httpmetric
 
 // HTTP метрики
-type HttpMetrics interface {
+type HttpMetricsIface interface {
 	// IncHTTPRequest увеличивает счетчик HTTP запросов
 	// method - HTTP метод (GET, POST, PUT, DELETE и т.д.)
 	// path - путь запроса (нормализованный, например /api/v1/users/:id)

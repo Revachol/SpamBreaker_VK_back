@@ -50,7 +50,7 @@ func Run() {
 
 	// 4. Transport layer.
 	handler := httphandler.NewHandler(moderationUC)
-	router := httphandler.NewRouter(app.registry, handler)
+	router := httphandler.NewRouter(handler, app.registry, app.config.Name, app.logger)
 
 	// 5. Старт.
 	coreAddr := fmt.Sprintf("%s:%d", cfg.Host, cfg.Port)

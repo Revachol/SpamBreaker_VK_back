@@ -1,16 +1,15 @@
-package prometheusmetric
+package httpmetric
 
 import (
 	"strconv"
 
-	"github.com/Revachol/SpamBreaker_VK_back/internal/metrics/interfaces"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 )
 
-var _ interfaces.HttpMetrics = (*PrometheusHttpMetrics)(nil)
+var _ HttpMetricsIface = (*PrometheusHttpCollector)(nil)
 
-type PrometheusHttpMetrics struct {
+type PrometheusHttpCollector struct {
 	serviceName string
 	registry    *prometheus.Registry
 
@@ -18,9 +17,9 @@ type PrometheusHttpMetrics struct {
 	httpDuration *prometheus.HistogramVec
 }
 
-func NewPrometheusHttpMetrics(serviceName string, reg *prometheus.Registry) *PrometheusHttpMetrics {
+func NewPrometheusHttpCollector(serviceName string, reg *prometheus.Registry) *PrometheusHttpCollector {
 
-	mtrc := &PrometheusHttpMetrics{
+	mtrc := &PrometheusHttpCollector{
 		serviceName: serviceName,
 		registry:    reg,
 
@@ -48,10 +47,10 @@ func NewPrometheusHttpMetrics(serviceName string, reg *prometheus.Registry) *Pro
 	return mtrc
 }
 
-func (p *PrometheusHttpMetrics) IncHTTPRequest(method, path string, statusCode int) {
+func (p *PrometheusHttpCollector) IncHTTPRequest(method, path string, statusCode int) {
 	p.httpRequests.WithLabelValues(method, path, strconv.Itoa(statusCode), p.serviceName).Inc()
 }
 
-func (p *PrometheusHttpMetrics) ObserveHTTPDuration(method, path string, statusCode int, duration float64) {
+func (p *PrometheusHttpCollector) ObserveHTTPDuration(method, path string, statusCode int, duration float64) {
 	p.httpDuration.WithLabelValues(method, path, strconv.Itoa(statusCode), p.serviceName).Observe(duration)
 }
