@@ -11,16 +11,29 @@ import (
 	"github.com/Revachol/SpamBreaker_VK_back/internal/core/service"
 	"github.com/Revachol/SpamBreaker_VK_back/pkg/logger"
 	"github.com/Revachol/SpamBreaker_VK_back/pkg/postgres"
+	"github.com/prometheus/client_golang/prometheus"
 )
 
+type App struct {
+	config   *config.Config
+	logger   logger.Log
+	registry *prometheus.Registry
+}
+
 func Run() {
+	app := &App{}
+
 	// 1. Конфигурация из ENV.
 	cfg, err := config.Load()
 	if err != nil {
 		logger.LOG.Fatal(err)
 	}
+	app.config = cfg
 
 	log := logger.New(&cfg.Logger)
+	app.logger = log
+
+	app.registry = prometheus.NewRegistry()
 
 	// 2. Инфраструктурные зависимости.
 	mlAddr := fmt.Sprintf("http://%s:%s", cfg.ML.Host, cfg.ML.Port)
@@ -37,7 +50,7 @@ func Run() {
 
 	// 4. Transport layer.
 	handler := httphandler.NewHandler(moderationUC)
-	router := httphandler.NewRouter(handler)
+	router := httphandler.NewRouter(app.registry, handler)
 
 	// 5. Старт.
 	coreAddr := fmt.Sprintf("%s:%d", cfg.Host, cfg.Port)

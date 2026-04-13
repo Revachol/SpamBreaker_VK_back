@@ -4,13 +4,19 @@ import (
 	"net/http"
 	"time"
 
+	middlewaremetric "github.com/Revachol/SpamBreaker_VK_back/internal/metrics/middleware"
+	prometheusmetric "github.com/Revachol/SpamBreaker_VK_back/internal/metrics/prometheus"
 	"github.com/gin-gonic/gin"
+	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/promhttp"
 )
 
 // NewRouter собирает gin.Engine с маршрутами и middleware.
-func NewRouter(h *Handler) *gin.Engine {
+func NewRouter(reg *prometheus.Registry, h *Handler) *gin.Engine {
 	r := gin.New()
 
+	coll := prometheusmetric.NewPrometheusHttpMetrics("Core", reg)
+	r.Use(middlewaremetric.NewHttpMetricCollector(coll).Middleware())
 	r.Use(gin.Recovery())
 	r.Use(loggerMiddleware())
 	r.Use(corsMiddleware())
@@ -19,6 +25,8 @@ func NewRouter(h *Handler) *gin.Engine {
 	r.GET("/health", func(c *gin.Context) {
 		c.JSON(http.StatusOK, gin.H{"status": "ok", "ts": time.Now().UTC()})
 	})
+
+	r.GET("/metrics", gin.WrapH(promhttp.HandlerFor(reg, promhttp.HandlerOpts{})))
 
 	v1 := r.Group("/api/v1")
 	{
