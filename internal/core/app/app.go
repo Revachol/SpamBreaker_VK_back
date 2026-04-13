@@ -37,19 +37,19 @@ func Run() {
 
 	// 2. Инфраструктурные зависимости.
 	mlAddr := fmt.Sprintf("http://%s:%s", cfg.ML.Host, cfg.ML.Port)
-	mlClient := mlclient.NewClient(mlAddr)
+	mlClient := mlclient.NewClient(mlAddr, app.logger)
 	pgx, err := postgres.NewConnect(context.Background(), &cfg.Postgres)
 	if err != nil {
 		logger.LOG.Fatal(err)
 	}
-	repo := repository.NewMessageRepository(pgx)
+	repo := repository.NewMessageRepository(pgx, app.logger)
 	runMigrations(&cfg.Postgres, log)
 
 	// 3. Бизнес-логика.
-	moderationUC := service.NewModerationUseCase(mlClient, repo)
+	moderationUC := service.NewModerationUseCase(mlClient, repo, app.logger)
 
 	// 4. Transport layer.
-	handler := httphandler.NewHandler(moderationUC)
+	handler := httphandler.NewHandler(moderationUC, app.logger)
 	router := httphandler.NewRouter(handler, app.registry, app.config.Name, app.logger)
 
 	// 5. Старт.

@@ -58,7 +58,7 @@ func Run() {
 	apiClient := telegram.NewAPIClient(coreAddr)
 
 	router := httphandler.NewRouter(app.registry)
-	coreAddr = fmt.Sprintf("%s:%s", cfg.Core.Host, cfg.Metrics.Port)
+	coreAddr = fmt.Sprintf("%s:%d", cfg.Host, cfg.Metrics.Port)
 	go func() {
 		if err := router.Run(coreAddr); err != nil {
 			log.Fatalf("server error: %v", err)

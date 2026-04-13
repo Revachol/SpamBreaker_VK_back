@@ -5,16 +5,18 @@ import (
 	"strconv"
 
 	"github.com/Revachol/SpamBreaker_VK_back/internal/core/service"
+	"github.com/Revachol/SpamBreaker_VK_back/pkg/logger"
 	"github.com/gin-gonic/gin"
 )
 
 // Handler держит зависимости всех хендлеров.
 type Handler struct {
+	logger     logger.Log
 	moderation *service.ModerationUseCase
 }
 
-func NewHandler(moderation *service.ModerationUseCase) *Handler {
-	return &Handler{moderation: moderation}
+func NewHandler(moderation *service.ModerationUseCase, l logger.Log) *Handler {
+	return &Handler{moderation: moderation, logger: l}
 }
 
 // ---------- Request / Response DTOs ----------
@@ -53,6 +55,7 @@ type errorResponse struct {
 func (h *Handler) Check(c *gin.Context) {
 	var req checkRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
+		h.logger.Warnf("Bind error %s", err)
 		c.JSON(http.StatusBadRequest, errorResponse{Error: err.Error()})
 		return
 	}
@@ -64,6 +67,7 @@ func (h *Handler) Check(c *gin.Context) {
 		if isUpstreamError(err) {
 			status = http.StatusBadGateway
 		}
+		h.logger.Errorf("Check text error %s with status %d", err, status)
 		c.JSON(status, errorResponse{Error: err.Error()})
 		return
 	}

@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/Revachol/SpamBreaker_VK_back/internal/domain"
+	"github.com/Revachol/SpamBreaker_VK_back/pkg/logger"
 )
 
 // mlRequest — тело запроса к ML-сервису.
@@ -27,14 +28,16 @@ type mlResponse struct {
 type Client struct {
 	baseURL    string
 	httpClient *http.Client
+	logger     logger.Log
 }
 
-func NewClient(baseURL string) *Client {
+func NewClient(baseURL string, l logger.Log) *Client {
 	return &Client{
 		baseURL: baseURL,
 		httpClient: &http.Client{
 			Timeout: 5 * time.Second,
 		},
+		logger: l,
 	}
 }
 
@@ -52,22 +55,26 @@ func (c *Client) Classify(ctx context.Context, text string) (*domain.Verdict, er
 		bytes.NewReader(body),
 	)
 	if err != nil {
+		c.logger.Errorf("ml client: create request: %w", err)
 		return nil, fmt.Errorf("ml client: build request: %w", err)
 	}
 	req.Header.Set("Content-Type", "application/json")
 
 	resp, err := c.httpClient.Do(req)
 	if err != nil {
+		c.logger.Errorf("ml client: do request: %w", err)
 		return nil, fmt.Errorf("ml client: do request: %w", err)
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
+		c.logger.Errorf("ml client: bad status code: %d", resp.StatusCode)
 		return nil, fmt.Errorf("ml client: unexpected status %d", resp.StatusCode)
 	}
 
 	var mlResp mlResponse
 	if err := json.NewDecoder(resp.Body).Decode(&mlResp); err != nil {
+		c.logger.Errorf("ml client: decode response: %w", err)
 		return nil, fmt.Errorf("ml client: decode response: %w", err)
 	}
 

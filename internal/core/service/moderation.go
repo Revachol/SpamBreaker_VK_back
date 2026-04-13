@@ -8,6 +8,7 @@ import (
 
 	repository "github.com/Revachol/SpamBreaker_VK_back/internal/core/repository/interfaces"
 	"github.com/Revachol/SpamBreaker_VK_back/internal/domain"
+	"github.com/Revachol/SpamBreaker_VK_back/pkg/logger"
 	"github.com/google/uuid"
 )
 
@@ -15,15 +16,18 @@ import (
 type ModerationUseCase struct {
 	classifier domain.Classifier
 	repo       repository.MessageRepository
+	logger     logger.Log
 }
 
 func NewModerationUseCase(
 	classifier domain.Classifier,
 	repo repository.MessageRepository,
+	logger logger.Log,
 ) *ModerationUseCase {
 	return &ModerationUseCase{
 		classifier: classifier,
 		repo:       repo,
+		logger:     logger,
 	}
 }
 
@@ -52,8 +56,7 @@ func (uc *ModerationUseCase) CheckText(ctx context.Context, text string) (*domai
 	// Сохраняем в репозиторий. Ошибка сохранения не блокирует ответ клиенту —
 	// логируем, но всё равно возвращаем результат.
 	if err := uc.repo.Save(ctx, record); err != nil {
-		// TODO: заменить на нормальный logger
-		fmt.Printf("[WARN] failed to save check record: %v\n", err)
+		uc.logger.Warnf("failed to save check record: %v\n", err)
 	}
 
 	return record, nil
