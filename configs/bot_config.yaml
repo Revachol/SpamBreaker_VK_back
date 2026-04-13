@@ -11,6 +11,9 @@ app:
   telegram:
     token: TELEGRAM_TOKEN
 
+  metrics:
+    port: 8081
+
   core_service:
     host: CORE_HOST
     port: CORE_PORT

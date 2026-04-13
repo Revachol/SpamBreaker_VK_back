@@ -21,11 +21,16 @@ type Config struct {
 	SwaggerPath string              `yaml:"swagger_path"`
 	Logger      logger.LoggerConfig `yaml:"logger"`
 	Telegram    TelegramConfig      `yaml:"telegram"`
+	Metrics     MetricsConfig       `yaml:"metrics"`
 	Core        ServiceConfig       `yaml:"core_service"`
 }
 
 type TelegramConfig struct {
 	Token string `yaml:"token"`
+}
+
+type MetricsConfig struct {
+	Port int `yaml:"port"`
 }
 
 type ServiceConfig struct {
@@ -52,6 +57,10 @@ func Load() (*Config, error) {
 		Color:     true,
 		Timestamp: true,
 	}
+	config.App.Metrics = MetricsConfig{
+		Port: 8081,
+	}
+
 	if err := yaml.Unmarshal(data, &config); err != nil {
 		return nil, fmt.Errorf("failed to parse config: %w", err)
 	}

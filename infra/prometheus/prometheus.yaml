@@ -20,27 +20,21 @@ scrape_configs:
         replacement: 'host-machine'
 
   # Ваши сервисы
-  - job_name: 'auth-service'
-    static_configs:
-      - targets: ['host.docker.internal:8081']
-    scrape_interval: 15s
-    metrics_path: /metrics
-
   - job_name: 'core-service'
     static_configs:
-      - targets: ['host.docker.internal:8082']
+      - targets: ['core-service:8080']
     scrape_interval: 15s
     metrics_path: /metrics
 
-  - job_name: 'chat-service'
+  - job_name: 'bot-service'
     static_configs:
-      - targets: ['host.docker.internal:8083']
+      - targets: ['bot-service:8081']
     scrape_interval: 15s
     metrics_path: /metrics
 
-  - job_name: 'server'
+  - job_name: 'model-service'
     static_configs:
-      - targets: ['host.docker.internal:8080']
+      - targets: ['model-service:8000']
     scrape_interval: 15s
     metrics_path: /metrics
 
