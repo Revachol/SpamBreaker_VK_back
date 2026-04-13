@@ -8,7 +8,7 @@ COPY go.mod go.sum ./
 RUN go mod download
 
 # Копируем исходный код
-COPY .. .
+COPY . .
 
 # Собираем статический бинарник
 RUN CGO_ENABLED=0 GOOS=linux go build -a -installsuffix cgo -o ./build/main ./cmd/core/main.go
