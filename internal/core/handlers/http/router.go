@@ -4,11 +4,12 @@ import (
 	"net/http"
 	"time"
 
+	jwtpkg "github.com/Revachol/SpamBreaker_VK_back/pkg/jwt"
 	"github.com/gin-gonic/gin"
 )
 
 // NewRouter собирает gin.Engine с маршрутами и middleware.
-func NewRouter(h *Handler) *gin.Engine {
+func NewRouter(h *Handler, ah *AuthHandler, jwtManager *jwtpkg.Manager) *gin.Engine {
 	r := gin.New()
 
 	r.Use(gin.Recovery())
@@ -20,9 +21,23 @@ func NewRouter(h *Handler) *gin.Engine {
 		c.JSON(http.StatusOK, gin.H{"status": "ok", "ts": time.Now().UTC()})
 	})
 
-	v1 := r.Group("/api/v1")
+	// Публичные маршруты — регистрация и вход.
+	authGroup := r.Group("/api/v1/auth")
 	{
-		v1.POST("/check", h.Check)
+		authGroup.POST("/register", ah.Register)
+		authGroup.POST("/login", ah.Login)
+	}
+
+	// Публичные маршруты бота — вызываются Telegram-ботом без JWT.
+	bot := r.Group("/api/v1")
+	{
+		bot.POST("/check", h.Check)
+	}
+
+	// Защищённые маршруты — требуют Bearer-токен.
+	v1 := r.Group("/api/v1")
+	v1.Use(JWTMiddleware(jwtManager))
+	{
 		v1.GET("/history", h.GetHistory)
 		v1.GET("/history/:id", h.GetRecord)
 	}
@@ -58,14 +73,13 @@ func statusColor(code int) string {
 	}
 }
 
-// corsMiddleware — разрешаем запросы от любого origin (для хакатона достаточно).
 func corsMiddleware() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		c.Header("Access-Control-Allow-Origin", "*")
 		c.Header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
 		c.Header("Access-Control-Allow-Headers", "Content-Type, Authorization")
 
-		if c.Request.Method == http.MethodOptions {
+		if c.Request.Method == "OPTIONS" {
 			c.AbortWithStatus(http.StatusNoContent)
 			return
 		}

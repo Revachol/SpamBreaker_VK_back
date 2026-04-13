@@ -8,8 +8,6 @@ import (
 
 // ---------- Port: хранилище ----------
 
-// MessageRepository — абстракция над БД.
-// Реализация появится позже (PostgreSQL).
 type MessageRepository interface {
 	Save(ctx context.Context, record *domain.CheckRecord) error
 	List(ctx context.Context, limit, offset int) ([]*domain.CheckRecord, error)
