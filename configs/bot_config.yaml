@@ -1,5 +1,5 @@
 app:
-  name: Bot
+  name: TGBot
   host: 0.0.0.0
   port: 8080
   prefix: /api/v1
