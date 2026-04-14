@@ -14,8 +14,11 @@ func Middleware(m HttpMetricsIface) gin.HandlerFunc {
 		duration := time.Since(start).Seconds()
 
 		path := middleware.NormalizePath(c.Request.URL.Path)
-		status := c.Writer.Status() // прямое получение статуса
+		status := c.Writer.Status()
 
+		if path == "/metrics" || path == "/health" {
+			return
+		}
 		m.IncHTTPRequest(c.Request.Method, path, status)
 		m.ObserveHTTPDuration(c.Request.Method, path, status, duration)
 	}

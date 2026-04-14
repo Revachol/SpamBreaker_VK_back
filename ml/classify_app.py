@@ -126,18 +126,19 @@ class TinyBERTStudent(nn.Module):
 requests_total = Counter(
     'http_requests_total',
     'Total number of HTTP requests',
-    ['method', 'endpoint', 'status']
+    ['method', 'path', 'status', "service"]
 )
 request_duration = Histogram(
     'http_request_duration_seconds',
     'Duration of HTTP requests in seconds',
-    ['method', 'endpoint', 'status'],
+    ['method', 'path', 'status', "service"],
     buckets=(0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1, 2.5, 5, 10)
 )
 
 
 # ── Инициализация ───────────────────────────────────────────────────
 
+service = Model
 app = FastAPI(title="TinyBERT Sentiment Classifier")
 
 tokenizer = BertTokenizer.from_pretrained(TEACHER_NAME)
@@ -200,8 +201,10 @@ async def metrics_middleware(request: Request, call_next):
     method = request.method
     status = response.status_code
 
-    requests_total.labels(method=method, endpoint=endpoint, status=status).inc()
-    request_duration.labels(method=method, endpoint=endpoint, status=status).observe(duration)
+    if endpoint == "/health" or endpoint == "/metrics":
+        return response
+    requests_total.labels(method=method, path=endpoint, status=status, service=service).inc()
+    request_duration.labels(method=method, path=endpoint, status=status, service=service).observe(duration)
 
     return response
 
