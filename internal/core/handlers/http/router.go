@@ -4,22 +4,38 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/Revachol/SpamBreaker_VK_back/internal/core/config"
+	httpmetric "github.com/Revachol/SpamBreaker_VK_back/internal/metrics/http"
+	"github.com/Revachol/SpamBreaker_VK_back/internal/middleware"
 	jwtpkg "github.com/Revachol/SpamBreaker_VK_back/pkg/jwt"
+	"github.com/Revachol/SpamBreaker_VK_back/pkg/logger"
 	"github.com/gin-gonic/gin"
+	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/promhttp"
 )
 
 // NewRouter собирает gin.Engine с маршрутами и middleware.
-func NewRouter(h *Handler, ah *AuthHandler, jwtManager *jwtpkg.Manager) *gin.Engine {
+func NewRouter(
+	h *Handler,
+	ah *AuthHandler,
+	jwtManager *jwtpkg.Manager,
+	reg *prometheus.Registry,
+	cfg *config.Config,
+	l logger.Log,
+) *gin.Engine {
 	r := gin.New()
 
+	coll := httpmetric.NewPrometheusHttpCollector(cfg.Name, reg)
+	r.Use(httpmetric.Middleware(coll))
 	r.Use(gin.Recovery())
-	r.Use(loggerMiddleware())
-	r.Use(corsMiddleware())
+	r.Use(middleware.LogMiddleware(l))
+	r.Use(middleware.CORSMiddleware(&cfg.Cors))
 
 	// Health-check — используется Docker и оркестраторами.
 	r.GET("/health", func(c *gin.Context) {
 		c.JSON(http.StatusOK, gin.H{"status": "ok", "ts": time.Now().UTC()})
 	})
+	r.GET("/metrics", gin.WrapH(promhttp.HandlerFor(reg, promhttp.HandlerOpts{})))
 
 	// Публичные маршруты — регистрация и вход.
 	authGroup := r.Group("/api/v1/auth")
@@ -43,46 +59,4 @@ func NewRouter(h *Handler, ah *AuthHandler, jwtManager *jwtpkg.Manager) *gin.Eng
 	}
 
 	return r
-}
-
-// loggerMiddleware — минимальный структурированный лог каждого запроса.
-func loggerMiddleware() gin.HandlerFunc {
-	return func(c *gin.Context) {
-		start := time.Now()
-		c.Next()
-		latency := time.Since(start)
-
-		gin.DefaultWriter.Write([]byte(
-			time.Now().Format("2006-01-02 15:04:05") + " | " +
-				statusColor(c.Writer.Status()) +
-				" | " + latency.String() +
-				" | " + c.Request.Method +
-				" " + c.Request.URL.Path + "\n",
-		))
-	}
-}
-
-func statusColor(code int) string {
-	switch {
-	case code >= 500:
-		return "5xx"
-	case code >= 400:
-		return "4xx"
-	default:
-		return "2xx"
-	}
-}
-
-func corsMiddleware() gin.HandlerFunc {
-	return func(c *gin.Context) {
-		c.Header("Access-Control-Allow-Origin", "*")
-		c.Header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
-		c.Header("Access-Control-Allow-Headers", "Content-Type, Authorization")
-
-		if c.Request.Method == "OPTIONS" {
-			c.AbortWithStatus(http.StatusNoContent)
-			return
-		}
-		c.Next()
-	}
 }

@@ -72,20 +72,27 @@ jobs:
         env:
           APP_DIR: /home/ubuntu/spambreaker
         run: |
+          APPS="core_service bot_service model_service"
           ssh -o StrictHostKeyChecking=no -i ~/.ssh/deploy_key $SERVER_CONFIG \
             "mkdir -p $APP_DIR/$MODE/infra"
+          
           ssh -o StrictHostKeyChecking=no -i ~/.ssh/deploy_key $SERVER_CONFIG \
-            "cd $APP_DIR/$MODE && docker compose down" || echo "Down error"
+            "cd $APP_DIR/$MODE && docker compose down $APPS" || echo "Down error"
+          
           scp -o StrictHostKeyChecking=no -i ~/.ssh/deploy_key all_images.tar \
             $SERVER_CONFIG:$APP_DIR/$MODE || echo "SCP image error"
           scp -o StrictHostKeyChecking=no -i ~/.ssh/deploy_key -r .env docker-compose.yaml ./configs/ \
             $SERVER_CONFIG:$APP_DIR/$MODE/ || echo "SCP configs error"
-          scp -o StrictHostKeyChecking=no -i ~/.ssh/deploy_key -r ./infra/migrations/ \
+          scp -o StrictHostKeyChecking=no -i ~/.ssh/deploy_key -r ./infra/* \
             $SERVER_CONFIG:$APP_DIR/$MODE/infra/ || echo "SCP configs error"
+          ssh -o StrictHostKeyChecking=no -i ~/.ssh/deploy_key $SERVER_CONFIG \
+            "rm -rf $APP_DIR/$MODE/infra/dockerfiles"
+          
           ssh -o StrictHostKeyChecking=no -i ~/.ssh/deploy_key $SERVER_CONFIG \
             "docker load -i $APP_DIR/$MODE/all_images.tar" || echo "Image load error"
           ssh -o StrictHostKeyChecking=no -i ~/.ssh/deploy_key $SERVER_CONFIG \
             "cd $APP_DIR/$MODE && docker compose up -d --force-recreate" || echo "Run error"
+          
           RESULT=$(ssh -o StrictHostKeyChecking=no -i ~/.ssh/deploy_key $SERVER_CONFIG \
             "cd $APP_DIR/$MODE && docker compose ps -q | wc -l")
           EXPECT=$(ssh -o StrictHostKeyChecking=no -i ~/.ssh/deploy_key $SERVER_CONFIG \

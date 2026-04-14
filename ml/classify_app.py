@@ -9,10 +9,12 @@ FastAPI-сервис для TinyBERT Sentiment.
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Response, Request
 from pydantic import BaseModel as PydanticBase
 from transformers import BertConfig, BertTokenizer
 from transformers.models.bert.modeling_bert import BertEncoder, BertPooler
+from prometheus_client import Counter, Histogram, generate_latest, CONTENT_TYPE_LATEST
+import time
 
 # ── Схема запроса / ответа ──────────────────────────────────────────
 
@@ -118,6 +120,22 @@ class TinyBERTStudent(nn.Module):
         return {"logits": logits, "cls_hidden": pooled_output}
 
 
+# ── Метрики Prometheus ───────────────────────────────────────────────
+
+# Создаём метрики (глобальные)
+requests_total = Counter(
+    'http_requests_total',
+    'Total number of HTTP requests',
+    ['method', 'endpoint', 'status']
+)
+request_duration = Histogram(
+    'http_request_duration_seconds',
+    'Duration of HTTP requests in seconds',
+    ['method', 'endpoint', 'status'],
+    buckets=(0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1, 2.5, 5, 10)
+)
+
+
 # ── Инициализация ───────────────────────────────────────────────────
 
 app = FastAPI(title="TinyBERT Sentiment Classifier")
@@ -171,6 +189,23 @@ def _classify_text(text: str) -> dict:
 
 # ── Эндпоинты ────────────────────────────────────────────────────────
 
+
+@app.middleware("http")
+async def metrics_middleware(request: Request, call_next):
+    start = time.time()
+    response = await call_next(request)
+    duration = time.time() - start
+
+    endpoint = request.url.path
+    method = request.method
+    status = response.status_code
+
+    requests_total.labels(method=method, endpoint=endpoint, status=status).inc()
+    request_duration.labels(method=method, endpoint=endpoint, status=status).observe(duration)
+
+    return response
+
+
 @app.post("/classify", response_model=ClassifyResponse)
 def classify(req: ClassifyRequest):
     if not req.text.strip():
@@ -194,3 +229,9 @@ def classify_batch(req: BatchRequest):
 @app.get("/health")
 def health():
     return {"status": "ok", "device": str(DEVICE)}
+
+
+@app.get("/metrics")
+def metrics():
+    return Response(content=generate_latest(), media_type=CONTENT_TYPE_LATEST)
+

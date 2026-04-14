@@ -8,6 +8,7 @@ import (
 	repository "github.com/Revachol/SpamBreaker_VK_back/internal/core/repository/interfaces"
 	"github.com/Revachol/SpamBreaker_VK_back/internal/domain"
 	jwtpkg "github.com/Revachol/SpamBreaker_VK_back/pkg/jwt"
+	"github.com/Revachol/SpamBreaker_VK_back/pkg/logger"
 	"github.com/google/uuid"
 	"golang.org/x/crypto/bcrypt"
 )
@@ -16,10 +17,15 @@ import (
 type AuthUseCase struct {
 	repo       repository.ModeratorRepository
 	jwtManager *jwtpkg.Manager
+	logger     logger.Log
 }
 
-func NewAuthUseCase(repo repository.ModeratorRepository, jwtManager *jwtpkg.Manager) *AuthUseCase {
-	return &AuthUseCase{repo: repo, jwtManager: jwtManager}
+func NewAuthUseCase(
+	repo repository.ModeratorRepository,
+	jwtManager *jwtpkg.Manager,
+	l logger.Log,
+) *AuthUseCase {
+	return &AuthUseCase{repo: repo, jwtManager: jwtManager, logger: l}
 }
 
 // --- Input / Output ---
@@ -72,6 +78,7 @@ func (uc *AuthUseCase) Register(ctx context.Context, input RegisterInput) (*Auth
 	// Хешируем пароль.
 	hash, err := bcrypt.GenerateFromPassword([]byte(input.Password), bcrypt.DefaultCost)
 	if err != nil {
+		uc.logger.Errorf("Error hashing password: %s", err)
 		return nil, fmt.Errorf("register: hash password: %w", err)
 	}
 
@@ -89,6 +96,7 @@ func (uc *AuthUseCase) Register(ctx context.Context, input RegisterInput) (*Auth
 
 	token, err := uc.jwtManager.Generate(mod.ID, mod.Username, mod.Role)
 	if err != nil {
+		uc.logger.Errorf("Error generating token: %s", err)
 		return nil, fmt.Errorf("register: generate token: %w", err)
 	}
 
@@ -124,6 +132,7 @@ func (uc *AuthUseCase) Login(ctx context.Context, input LoginInput) (*AuthResult
 
 	token, err := uc.jwtManager.Generate(mod.ID, mod.Username, mod.Role)
 	if err != nil {
+		uc.logger.Errorf("Error generating token: %s", err)
 		return nil, fmt.Errorf("login: generate token: %w", err)
 	}
 

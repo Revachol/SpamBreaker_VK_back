@@ -7,18 +7,20 @@ import (
 	"time"
 
 	"github.com/Revachol/SpamBreaker_VK_back/internal/domain"
+	"github.com/Revachol/SpamBreaker_VK_back/pkg/logger"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
 // MessageRepository реализует интерфейс MessageRepository для PostgreSQL.
 type MessageRepository struct {
-	db *pgxpool.Pool
+	db     *pgxpool.Pool
+	logger logger.Log
 }
 
 // NewMessageRepository создаёт новый экземпляр репозитория.
-func NewMessageRepository(db *pgxpool.Pool) *MessageRepository {
-	return &MessageRepository{db: db}
+func NewMessageRepository(db *pgxpool.Pool, l logger.Log) *MessageRepository {
+	return &MessageRepository{db: db, logger: l}
 }
 
 // Save сохраняет запись в базу данных.
@@ -35,6 +37,7 @@ func (r *MessageRepository) Save(ctx context.Context, record *domain.CheckRecord
 	if record.ID != "" {
 		parsedID, err := uuid.Parse(record.ID)
 		if err != nil {
+			r.logger.Errorf("Message repo: parse id failed: %s", err)
 			return err
 		}
 		idParam = parsedID
@@ -47,6 +50,7 @@ func (r *MessageRepository) Save(ctx context.Context, record *domain.CheckRecord
 		idParam, record.Text, record.Verdict.Label, toxicityScore, record.CreatedAt,
 	).Scan(&generatedID)
 	if err != nil {
+		r.logger.Errorf("Message repo: save failed: %s", err)
 		return err
 	}
 
@@ -66,6 +70,7 @@ func (r *MessageRepository) List(ctx context.Context, limit, offset int) ([]*dom
 
 	rows, err := r.db.Query(ctx, query, limit, offset)
 	if err != nil {
+		r.logger.Errorf("Message repo: list failed: %s", err)
 		return nil, err
 	}
 	defer rows.Close()
@@ -79,6 +84,7 @@ func (r *MessageRepository) List(ctx context.Context, limit, offset int) ([]*dom
 		var createdAt time.Time
 
 		if err := rows.Scan(&id, &text, &status, &toxicityScore, &createdAt); err != nil {
+			r.logger.Errorf("Message repo: scan list failed: %s", err)
 			return nil, err
 		}
 
@@ -97,6 +103,7 @@ func (r *MessageRepository) List(ctx context.Context, limit, offset int) ([]*dom
 	}
 
 	if err := rows.Err(); err != nil {
+		r.logger.Errorf("Message repo: process list rows failed: %s", err)
 		return nil, err
 	}
 
@@ -123,6 +130,7 @@ func (r *MessageRepository) GetByID(ctx context.Context, id string) (*domain.Che
 		if errors.Is(err, sql.ErrNoRows) {
 			return nil, nil
 		}
+		r.logger.Errorf("Message repo: get by id failed: %s", err)
 		return nil, err
 	}
 
