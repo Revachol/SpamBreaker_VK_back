@@ -4,16 +4,18 @@ import (
 	"net/http"
 
 	"github.com/Revachol/SpamBreaker_VK_back/internal/core/service"
+	"github.com/Revachol/SpamBreaker_VK_back/pkg/logger"
 	"github.com/gin-gonic/gin"
 )
 
 // AuthHandler обрабатывает запросы аутентификации.
 type AuthHandler struct {
-	auth *service.AuthUseCase
+	auth   *service.AuthUseCase
+	logger logger.Log
 }
 
-func NewAuthHandler(auth *service.AuthUseCase) *AuthHandler {
-	return &AuthHandler{auth: auth}
+func NewAuthHandler(auth *service.AuthUseCase, l logger.Log) *AuthHandler {
+	return &AuthHandler{auth: auth, logger: l}
 }
 
 // --- DTOs ---
@@ -51,6 +53,7 @@ type authResponse struct {
 func (h *AuthHandler) Register(c *gin.Context) {
 	var req registerRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
+		h.logger.Warnf("invalid register request: %v", err)
 		c.JSON(http.StatusBadRequest, errorResponse{Error: err.Error()})
 		return
 	}
@@ -86,6 +89,7 @@ func (h *AuthHandler) Register(c *gin.Context) {
 func (h *AuthHandler) Login(c *gin.Context) {
 	var req loginRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
+		h.logger.Warnf("invalid login request: %v", err)
 		c.JSON(http.StatusBadRequest, errorResponse{Error: err.Error()})
 		return
 	}

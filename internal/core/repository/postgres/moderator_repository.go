@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/Revachol/SpamBreaker_VK_back/internal/domain"
+	"github.com/Revachol/SpamBreaker_VK_back/pkg/logger"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -13,11 +14,12 @@ import (
 
 // ModeratorRepository реализует интерфейс ModeratorRepository для PostgreSQL.
 type ModeratorRepository struct {
-	db *pgxpool.Pool
+	db     *pgxpool.Pool
+	logger logger.Log
 }
 
-func NewModeratorRepository(db *pgxpool.Pool) *ModeratorRepository {
-	return &ModeratorRepository{db: db}
+func NewModeratorRepository(db *pgxpool.Pool, l logger.Log) *ModeratorRepository {
+	return &ModeratorRepository{db: db, logger: l}
 }
 
 // Create сохраняет нового модератора.
@@ -32,6 +34,7 @@ func (r *ModeratorRepository) Create(ctx context.Context, mod *domain.Moderator)
 	if mod.ID != "" {
 		parsed, err := uuid.Parse(mod.ID)
 		if err != nil {
+			r.logger.Errorf("Error parsing moderator id %s: %s", mod.ID, err)
 			return err
 		}
 		idParam = parsed
@@ -51,6 +54,7 @@ func (r *ModeratorRepository) Create(ctx context.Context, mod *domain.Moderator)
 		now,
 	).Scan(&generatedID, &mod.CreatedAt, &mod.UpdatedAt)
 	if err != nil {
+		r.logger.Errorf("Error creating moderator %s: %s", mod.ID, err)
 		return err
 	}
 
@@ -83,6 +87,7 @@ func (r *ModeratorRepository) GetByUsername(ctx context.Context, username string
 		if errors.Is(err, pgx.ErrNoRows) {
 			return nil, nil
 		}
+		r.logger.Errorf("Error getting moderator with username - %s: %s", username, err)
 		return nil, err
 	}
 
@@ -115,6 +120,7 @@ func (r *ModeratorRepository) GetByID(ctx context.Context, id string) (*domain.M
 		if errors.Is(err, pgx.ErrNoRows) {
 			return nil, nil
 		}
+		r.logger.Errorf("Error getting moderator with ID - %s: %s", id, err)
 		return nil, err
 	}
 

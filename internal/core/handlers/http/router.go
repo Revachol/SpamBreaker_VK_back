@@ -20,7 +20,7 @@ func NewRouter(
 	ah *AuthHandler,
 	jwtManager *jwtpkg.Manager,
 	reg *prometheus.Registry,
-	cfg config.Config,
+	cfg *config.Config,
 	l logger.Log,
 ) *gin.Engine {
 	r := gin.New()
