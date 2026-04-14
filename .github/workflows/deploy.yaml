@@ -72,7 +72,7 @@ jobs:
         env:
           APP_DIR: /home/ubuntu/spambreaker
         run: |
-          APPS="core_$MODE bot_%MODE model_$MODE"
+          APPS="core_service bot_service model_service"
           ssh -o StrictHostKeyChecking=no -i ~/.ssh/deploy_key $SERVER_CONFIG \
             "mkdir -p $APP_DIR/$MODE/infra"
           

@@ -22,19 +22,19 @@ scrape_configs:
   # Ваши сервисы
   - job_name: 'core-service'
     static_configs:
-      - targets: ['core-service:8080']
+      - targets: ['core_service:8080']
     scrape_interval: 15s
     metrics_path: /metrics
 
   - job_name: 'bot-service'
     static_configs:
-      - targets: ['bot-service:8081']
+      - targets: ['bot_service:8081']
     scrape_interval: 15s
     metrics_path: /metrics
 
   - job_name: 'model-service'
     static_configs:
-      - targets: ['model-service:8000']
+      - targets: ['model_service:8000']
     scrape_interval: 15s
     metrics_path: /metrics
 

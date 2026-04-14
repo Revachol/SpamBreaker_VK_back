@@ -115,14 +115,12 @@ services:
 
   node-exporter:
     image: prom/node-exporter:v1.10.2
-    container_name: node_exporter_vk
+    container_name: node_exporter_${MODE}
     command:
       - '--path.rootfs=/host'
       - '--path.procfs=/host/proc'
       - '--path.sysfs=/host/sys'
       - '--collector.filesystem.mount-points-exclude=^/(sys|proc|dev|host|etc)($$|/)'
-    ports:
-      - "9100:9100"
     volumes:
       - /proc:/host/proc:ro
       - /sys:/host/sys:ro
@@ -133,7 +131,7 @@ services:
   # Prometheus
   prometheus:
     image: prom/prometheus:v3.7.3
-    container_name: prometheus_vk
+    container_name: prometheus_${MODE}
     volumes:
       - ./infra/prometheus/prometheus.yaml:/etc/prometheus/prometheus.yaml
       - prometheus_data:/prometheus
@@ -152,7 +150,7 @@ services:
   # Grafana
   grafana:
     image: grafana/grafana:12.3
-    container_name: grafana_vk
+    container_name: grafana_${MODE}
     ports:
       - "${GF_EXPORT}:3000"
     environment:
