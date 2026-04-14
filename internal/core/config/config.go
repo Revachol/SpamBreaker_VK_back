@@ -24,6 +24,12 @@ type Config struct {
 	Logger      logger.LoggerConfig `yaml:"logger"`
 	Postgres    PostgresConfig      `yaml:"postgres"`
 	ML          ServiceConfig       `yaml:"ml_service"`
+	JWT         JWTConfig           `yaml:"jwt"`
+}
+
+type JWTConfig struct {
+	Secret string        `yaml:"secret"`
+	TTL    time.Duration `yaml:"ttl"`
 }
 
 type CORSConfig struct {
@@ -64,6 +70,8 @@ func Load() (*Config, error) {
 	}
 
 	var config appConfig
+
+	// Дефолты.
 	config.App.Name = "App"
 	config.App.Host = "0.0.0.0"
 	config.App.Port = 8080
@@ -89,13 +97,18 @@ func Load() (*Config, error) {
 		MaxLife:             time.Hour,
 		MaxIdle:             30 * time.Minute,
 		HealthCheckInterval: 1 * time.Minute,
-
-		Migrated:   false,
-		Migrations: "./infra/migrations/",
+		Migrated:            false,
+		Migrations:          "./infra/migrations/",
 	}
+	config.App.JWT = JWTConfig{
+		Secret: "changeme",
+		TTL:    24 * time.Hour,
+	}
+
 	if err := yaml.Unmarshal(data, &config); err != nil {
 		return nil, fmt.Errorf("failed to parse config: %w", err)
 	}
+
 	loadEnv(&config.App)
 	return &config.App, nil
 }
@@ -111,6 +124,9 @@ func loadEnv(cfg *Config) {
 
 	cfg.ML.Host = getEnv(cfg.ML.Host, "localhost")
 	cfg.ML.Port = getEnv(cfg.ML.Port, "8080")
+
+	// JWT секрет обязательно берём из переменной окружения.
+	cfg.JWT.Secret = getEnv(cfg.JWT.Secret, "changeme-set-JWT_SECRET-in-env")
 }
 
 func getEnv(key, fallback string) string {

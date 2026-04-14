@@ -65,7 +65,7 @@ jobs:
           echo "$BUILD_ENV" > .env
           sed -i "s/^MODE=dev$/MODE=$MODE/" .env
           sed -i "s/^TAG=.*$/TAG=$TAG/" .env
-          docker compose build core_service bot_service ml_service
+          docker compose build core_service bot_service model_service
           docker save -o all_images.tar model-$MODE:$TAG bot-$MODE:$TAG core-$MODE:$TAG
 
       - name: Deploy
@@ -86,7 +86,8 @@ jobs:
             "docker load -i $APP_DIR/$MODE/all_images.tar" || echo "Image load error"
           ssh -o StrictHostKeyChecking=no -i ~/.ssh/deploy_key $SERVER_CONFIG \
             "cd $APP_DIR/$MODE && docker compose up -d --force-recreate" || echo "Run error"
-          RESULT=$(ssh -o StrictHostKeyChecking=no -i ~/.ssh/deploy_key $SERVER_CONFIG "docker ps -q | wc --l")
+          RESULT=$(ssh -o StrictHostKeyChecking=no -i ~/.ssh/deploy_key $SERVER_CONFIG \
+            "cd $APP_DIR/$MODE && docker compose ps -q | wc -l")
           EXPECT=$(ssh -o StrictHostKeyChecking=no -i ~/.ssh/deploy_key $SERVER_CONFIG \
             "cd $APP_DIR/$MODE && docker compose config --services | wc -l")
           if [[ "$RESULT" -eq "$EXPECT" ]]; then

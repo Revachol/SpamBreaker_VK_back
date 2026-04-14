@@ -6,7 +6,7 @@ services:
     image: core-${MODE}:${TAG}
     container_name: core_${MODE}
     depends_on:
-      ml_service:
+      model_service:
         condition: service_started
       postgres:
         condition: service_healthy
@@ -25,6 +25,7 @@ services:
       PG_PSWD: ${PG_PSWD}
       ML_HOST: ${ML_HOST}
       ML_PORT: ${ML_PORT}
+      JWT_SECRET: ${JWT_SECRET}
     networks:
       - service-net
 
@@ -49,14 +50,14 @@ services:
     networks:
       - service-net
 
-  ml_service:
+  model_service:
     build:
       context: ./ml
       dockerfile: ./../infra/dockerfiles/ml.Dockerfile
     image: model-${MODE}:${TAG}
     container_name: model_${MODE}
     volumes:
-      - ${MODEL_FILE}:/app/best_context_model.pt
+      - ${MODEL_FILE}:/app/model.pt
     environment:
       MODE: ${MODE}
       MODEL_FILE: ${MODEL_FILE}

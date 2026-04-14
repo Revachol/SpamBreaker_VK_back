@@ -1,21 +1,18 @@
 """
-FastAPI-сервис для ContextSentimentModel
-(TinyBERT + CrossAttention + TimeAwareGRU).
+FastAPI-сервис для TinyBERT Sentiment.
 
 Два эндпоинта:
-  POST /classify       — одно сообщение (без контекста, delta=0)
-  POST /classify_scene — цепочка сообщений с delta_seconds между ними
+  POST /classify       — одно сообщение
+  POST /classify_batch — список сообщений
 """
-
-import math
-from typing import Optional
 
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel as PydanticBase
-from transformers import BertModel, BertConfig, BertTokenizer
+from transformers import BertConfig, BertTokenizer
+from transformers.models.bert.modeling_bert import BertEncoder, BertPooler
 
 # ── Схема запроса / ответа ──────────────────────────────────────────
 
@@ -27,266 +24,173 @@ class ClassifyResponse(PydanticBase):
     confidence: float
     all_scores: dict[str, float]
 
+class BatchRequest(PydanticBase):
+    messages: list[str]
 
-class SceneMessage(PydanticBase):
-    text: str
-    delta_seconds: float = 0.0      # пауза ДО этого сообщения (сек.)
-
-
-class SceneRequest(PydanticBase):
-    messages: list[SceneMessage]
-
-
-class SceneMessageResult(PydanticBase):
+class BatchMessageResult(PydanticBase):
     text: str
     label: str
     confidence: float
     all_scores: dict[str, float]
-    delta_seconds: float
 
-
-class SceneResponse(PydanticBase):
-    results: list[SceneMessageResult]
+class BatchResponse(PydanticBase):
+    results: list[BatchMessageResult]
 
 
 # ── Константы ────────────────────────────────────────────────────────
 
 LABELS = {0: "neutral", 1: "positive", 2: "negative"}
 TEACHER_NAME = "blanchefort/rubert-base-cased-sentiment"
-
-# Гиперпараметры (1-в-1 из ноутбука)
-HIDDEN = 312
-NUM_LAYERS = 4
-NUM_HEADS = 12
-INTERMEDIATE = 1200
-CONTEXT_DIM = 312
-CROSS_ATTN_HEADS = 4
-CROSS_ATTN_LAYERS = 2
-NUM_LABELS = 3
 MAX_LEN = 128
-
-CHECKPOINT = "best_context_model.pt"
+CHECKPOINT = "model.pt"
 DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-# ── Архитектура (1-в-1 из ноутбука) ─────────────────────────────────
 
+# ── Архитектура ──────────────────────────────────────────────────────
 
-class CrossAttentionBlock(nn.Module):
-    """
-    N слоёв cross-attention поверх hidden states.
-    Применяется AFTER BERT, не внутри.
-    """
-
-    def __init__(
-        self,
-        hidden_size: int,
-        num_heads: int = 4,
-        num_layers: int = 2,
-        dropout: float = 0.1,
-    ):
+class FactorizedEmbedding(nn.Module):
+    def __init__(self, vocab_size, embed_dim, hidden_dim, pad_token_id=0,
+                 max_position_embeddings=512, type_vocab_size=2, layer_norm_eps=1e-12):
         super().__init__()
-        self.layers = nn.ModuleList()
-        for _ in range(num_layers):
-            self.layers.append(nn.ModuleDict({
-                "q": nn.Linear(hidden_size, hidden_size),
-                "k": nn.Linear(hidden_size, hidden_size),
-                "v": nn.Linear(hidden_size, hidden_size),
-                "out": nn.Linear(hidden_size, hidden_size),
-                "norm": nn.LayerNorm(hidden_size),
-                "dropout": nn.Dropout(dropout),
-            }))
-        self.num_heads = num_heads
-        self.head_dim = hidden_size // num_heads
+        self.word_embeddings = nn.Embedding(vocab_size, embed_dim, padding_idx=pad_token_id)
+        self.position_embeddings = nn.Embedding(max_position_embeddings, embed_dim)
+        self.token_type_embeddings = nn.Embedding(type_vocab_size, embed_dim)
+        self.projection = nn.Linear(embed_dim, hidden_dim)
+        self.LayerNorm = nn.LayerNorm(hidden_dim, eps=layer_norm_eps)
+        self.dropout = nn.Dropout(0.1)
+        self.register_buffer("position_ids", torch.arange(max_position_embeddings).unsqueeze(0))
 
-    def forward(self, hidden_states: torch.Tensor, context: torch.Tensor):
-        ctx = context.unsqueeze(1)              # (B, 1, H)
-        B, S, H = hidden_states.shape
-
-        for layer in self.layers:
-            residual = hidden_states
-
-            Q = layer["q"](hidden_states).view(B, S, self.num_heads, self.head_dim).transpose(1, 2)
-            K = layer["k"](ctx).view(B, 1, self.num_heads, self.head_dim).transpose(1, 2)
-            V = layer["v"](ctx).view(B, 1, self.num_heads, self.head_dim).transpose(1, 2)
-
-            attn = torch.matmul(Q, K.transpose(-2, -1)) / math.sqrt(self.head_dim)
-            attn = torch.softmax(attn, dim=-1)
-            attn = layer["dropout"](attn)
-
-            out = torch.matmul(attn, V)
-            out = out.transpose(1, 2).contiguous().view(B, S, H)
-            out = layer["out"](out)
-            out = layer["dropout"](out)
-
-            hidden_states = layer["norm"](residual + out)
-
-        return hidden_states
-
-
-class TimeAwareGRU(nn.Module):
-    """GRU + временной гейт: большая пауза → сильнее обновление контекста."""
-
-    def __init__(self, hidden_size: int):
-        super().__init__()
-        self.gru_cell = nn.GRUCell(hidden_size, hidden_size)
-        self.time_gate = nn.Linear(hidden_size * 2 + 1, hidden_size)
-
-    def forward(self, context, cls_vec, delta_seconds):
-        gru_out = self.gru_cell(cls_vec, context)
-        delta_feat = torch.log(delta_seconds.unsqueeze(-1) + 1)
-        gate_input = torch.cat([context, cls_vec, delta_feat], dim=-1)
-        gamma = torch.sigmoid(self.time_gate(gate_input))
-        return (1 - gamma) * context + gamma * gru_out
-
-
-class ContextSentimentModel(nn.Module):
-    def __init__(self, teacher_cfg: BertConfig):
-        super().__init__()
-
-        self.bert = BertModel(BertConfig(
-            vocab_size=teacher_cfg.vocab_size,
-            hidden_size=HIDDEN,
-            num_hidden_layers=NUM_LAYERS,
-            num_attention_heads=NUM_HEADS,
-            intermediate_size=INTERMEDIATE,
-            max_position_embeddings=teacher_cfg.max_position_embeddings,
-            type_vocab_size=teacher_cfg.type_vocab_size,
-            attn_implementation="eager",
-        ))
-
-        self.cross_attn = CrossAttentionBlock(
-            HIDDEN,
-            num_heads=CROSS_ATTN_HEADS,
-            num_layers=CROSS_ATTN_LAYERS,
+    def forward(self, input_ids, token_type_ids=None):
+        seq_len = input_ids.size(1)
+        position_ids = self.position_ids[:, :seq_len]
+        if token_type_ids is None:
+            token_type_ids = torch.zeros_like(input_ids)
+        embeddings = (
+            self.word_embeddings(input_ids)
+            + self.position_embeddings(position_ids)
+            + self.token_type_embeddings(token_type_ids)
         )
-        self.context_gru = TimeAwareGRU(CONTEXT_DIM)
-        self.classifier = nn.Linear(HIDDEN + CONTEXT_DIM, NUM_LABELS)
+        embeddings = self.projection(embeddings)
+        embeddings = self.LayerNorm(embeddings)
+        embeddings = self.dropout(embeddings)
+        return embeddings
 
-        # Проекции из дистилляции (нужны для загрузки чекпоинта)
-        self.embed_proj = nn.Linear(HIDDEN, 768)
-        self.hidden_proj = nn.Linear(HIDDEN, 768)
 
-    def encode_message(self, input_ids, attention_mask, token_type_ids, context):
-        bert_out = self.bert(
-            input_ids=input_ids,
-            attention_mask=attention_mask,
-            token_type_ids=token_type_ids,
+class TinyBERTStudent(nn.Module):
+    def __init__(self, vocab_size, embed_dim=128, hidden_dim=512,
+                 num_layers=6, num_heads=8, intermediate_size=2048,
+                 num_labels=3, max_position_embeddings=512, pad_token_id=0):
+        super().__init__()
+        self.hidden_dim = hidden_dim
+        self.num_labels = num_labels
+
+        self.embeddings = FactorizedEmbedding(
+            vocab_size=vocab_size, embed_dim=embed_dim,
+            hidden_dim=hidden_dim, pad_token_id=pad_token_id,
+            max_position_embeddings=max_position_embeddings,
         )
-        hidden_states = bert_out.last_hidden_state
-        enriched = self.cross_attn(hidden_states, context)
-        return enriched[:, 0]                     # CLS
 
-    def predict_message(self, input_ids, attention_mask, token_type_ids, context, delta):
-        """Инференс одного сообщения → logits + обновлённый контекст."""
-        cls = self.encode_message(input_ids, attention_mask, token_type_ids, context)
-        combined = torch.cat([cls, context], dim=-1)
-        logits = self.classifier(combined)
-        new_context = self.context_gru(context, cls, delta)
-        return logits, new_context
+        encoder_config = BertConfig(
+            vocab_size=vocab_size, hidden_size=hidden_dim,
+            num_hidden_layers=num_layers, num_attention_heads=num_heads,
+            intermediate_size=intermediate_size,
+            max_position_embeddings=max_position_embeddings,
+            hidden_dropout_prob=0.1, attention_probs_dropout_prob=0.1,
+        )
+        self.encoder = BertEncoder(encoder_config)
+        self.pooler = BertPooler(encoder_config)
+
+        self.dropout = nn.Dropout(0.1)
+        self.classifier = nn.Linear(hidden_dim, num_labels)
+
+    def forward(self, input_ids, attention_mask=None, token_type_ids=None):
+        if attention_mask is None:
+            attention_mask = torch.ones_like(input_ids)
+        extended_mask = attention_mask.unsqueeze(1).unsqueeze(2)
+        extended_mask = (1.0 - extended_mask.float()) * -10000.0
+
+        hidden_states = self.embeddings(input_ids, token_type_ids)
+        encoder_out = self.encoder(hidden_states, attention_mask=extended_mask)
+        sequence_output = encoder_out.last_hidden_state
+        pooled_output = self.pooler(sequence_output)
+        pooled_output = self.dropout(pooled_output)
+        logits = self.classifier(pooled_output)
+        return {"logits": logits, "cls_hidden": pooled_output}
 
 
 # ── Инициализация ───────────────────────────────────────────────────
 
-app = FastAPI(title="ContextSentiment Classifier")
+app = FastAPI(title="TinyBERT Sentiment Classifier")
 
 tokenizer = BertTokenizer.from_pretrained(TEACHER_NAME)
-teacher_cfg = BertConfig.from_pretrained(TEACHER_NAME)
-
-model = ContextSentimentModel(teacher_cfg).to(DEVICE)
 
 ckpt = torch.load(CHECKPOINT, map_location=DEVICE, weights_only=False)
-model.load_state_dict(ckpt["model_state"])
+model_config = ckpt["config"]
+
+model = TinyBERTStudent(
+    vocab_size=model_config["vocab_size"],
+    embed_dim=model_config["embed_dim"],
+    hidden_dim=model_config["hidden_dim"],
+    num_layers=model_config["num_layers"],
+    num_heads=model_config["num_heads"],
+    intermediate_size=model_config["intermediate_size"],
+    num_labels=model_config["num_labels"],
+    pad_token_id=tokenizer.pad_token_id,
+).to(DEVICE)
+
+model.load_state_dict(ckpt["model_state_dict"], strict=False)
 model.eval()
+
+print(f"Model loaded on {DEVICE}")
+
 
 # ── Хелперы ──────────────────────────────────────────────────────────
 
-
 def _tokenize(text: str) -> dict[str, torch.Tensor]:
     enc = tokenizer(
-        text,
-        max_length=MAX_LEN,
-        padding="max_length",
-        truncation=True,
-        return_tensors="pt",
+        text, max_length=MAX_LEN,
+        padding="max_length", truncation=True, return_tensors="pt",
     )
     return {k: v.to(DEVICE) for k, v in enc.items()}
 
 
-def _scores_from_logits(logits: torch.Tensor) -> tuple[dict[str, float], int]:
-    probs = F.softmax(logits, dim=-1).squeeze(0)
-    scores = {LABELS[i]: round(probs[i].item(), 4) for i in range(NUM_LABELS)}
-    best = int(probs.argmax())
-    return scores, best
+def _classify_text(text: str) -> dict:
+    enc = _tokenize(text)
+    with torch.no_grad():
+        out = model(**enc)
+        probs = F.softmax(out["logits"], dim=-1).squeeze(0)
+        best = int(probs.argmax())
+        scores = {LABELS[i]: round(probs[i].item(), 4) for i in range(3)}
+
+    return {
+        "label": LABELS[best],
+        "confidence": scores[LABELS[best]],
+        "all_scores": scores,
+    }
 
 
 # ── Эндпоинты ────────────────────────────────────────────────────────
 
-
 @app.post("/classify", response_model=ClassifyResponse)
 def classify(req: ClassifyRequest):
-    """Классификация одного сообщения (контекст = нулевой вектор)."""
     if not req.text.strip():
         raise HTTPException(status_code=422, detail="text must not be empty")
-
-    enc = _tokenize(req.text)
-    context = torch.zeros(1, CONTEXT_DIM, device=DEVICE)
-    delta = torch.tensor([0.0], device=DEVICE)
-
-    with torch.no_grad():
-        logits, _ = model.predict_message(
-            enc["input_ids"], enc["attention_mask"],
-            enc.get("token_type_ids", torch.zeros_like(enc["input_ids"])),
-            context, delta,
-        )
-
-    scores, best = _scores_from_logits(logits)
-    return ClassifyResponse(
-        label=LABELS[best],
-        confidence=scores[LABELS[best]],
-        all_scores=scores,
-    )
+    return ClassifyResponse(**_classify_text(req.text))
 
 
-@app.post("/classify_scene", response_model=SceneResponse)
-def classify_scene(req: SceneRequest):
-    """
-    Классификация цепочки сообщений с учётом контекста.
-
-    Пример тела запроса:
-    {
-      "messages": [
-        {"text": "Привет!", "delta_seconds": 0},
-        {"text": "Дурак ты)", "delta_seconds": 3},
-        {"text": "Сам такой", "delta_seconds": 2}
-      ]
-    }
-    """
+@app.post("/classify_batch", response_model=BatchResponse)
+def classify_batch(req: BatchRequest):
     if not req.messages:
         raise HTTPException(status_code=422, detail="messages must not be empty")
+    results = []
+    for text in req.messages:
+        if text.strip():
+            data = _classify_text(text)
+            data["text"] = text
+            results.append(BatchMessageResult(**data))
+    return BatchResponse(results=results)
 
-    context = torch.zeros(1, CONTEXT_DIM, device=DEVICE)
-    results: list[SceneMessageResult] = []
 
-    with torch.no_grad():
-        for msg in req.messages:
-            if not msg.text.strip():
-                continue
-            enc = _tokenize(msg.text)
-            delta = torch.tensor([msg.delta_seconds], dtype=torch.float, device=DEVICE)
-
-            logits, context = model.predict_message(
-                enc["input_ids"], enc["attention_mask"],
-                enc.get("token_type_ids", torch.zeros_like(enc["input_ids"])),
-                context, delta,
-            )
-
-            scores, best = _scores_from_logits(logits)
-            results.append(SceneMessageResult(
-                text=msg.text,
-                label=LABELS[best],
-                confidence=scores[LABELS[best]],
-                all_scores=scores,
-                delta_seconds=msg.delta_seconds,
-            ))
-
-    return SceneResponse(results=results)
+@app.get("/health")
+def health():
+    return {"status": "ok", "device": str(DEVICE)}
