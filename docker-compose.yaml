@@ -6,7 +6,7 @@ services:
     image: core-${MODE}:${TAG}
     container_name: core_${MODE}
     depends_on:
-      ml_service:
+      model_service:
         condition: service_started
       postgres:
         condition: service_healthy

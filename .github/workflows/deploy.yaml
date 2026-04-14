@@ -65,7 +65,7 @@ jobs:
           echo "$BUILD_ENV" > .env
           sed -i "s/^MODE=dev$/MODE=$MODE/" .env
           sed -i "s/^TAG=.*$/TAG=$TAG/" .env
-          docker compose build core_service bot_service ml_service
+          docker compose build core_service bot_service model_service
           docker save -o all_images.tar model-$MODE:$TAG bot-$MODE:$TAG core-$MODE:$TAG
 
       - name: Deploy
