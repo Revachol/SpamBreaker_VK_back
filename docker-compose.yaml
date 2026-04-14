@@ -25,6 +25,7 @@ services:
       PG_PSWD: ${PG_PSWD}
       ML_HOST: ${ML_HOST}
       ML_PORT: ${ML_PORT}
+      JWT_SECRET: ${JWT_SECRET}
     networks:
       - service-net
     healthcheck:

@@ -29,3 +29,9 @@ app:
   ml_service:
     host: ML_HOST
     port: ML_PORT
+
+  jwt:
+    # Значение берётся из переменной окружения JWT_SECRET.
+    # Здесь указываем имя переменной — config.loadEnv подставит реальное значение.
+    secret: JWT_SECRET
+    ttl: 24h

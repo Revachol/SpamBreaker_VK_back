@@ -7,6 +7,7 @@ import (
 	"github.com/Revachol/SpamBreaker_VK_back/internal/core/config"
 	httpmetric "github.com/Revachol/SpamBreaker_VK_back/internal/metrics/http"
 	"github.com/Revachol/SpamBreaker_VK_back/internal/middleware"
+	jwtpkg "github.com/Revachol/SpamBreaker_VK_back/pkg/jwt"
 	"github.com/Revachol/SpamBreaker_VK_back/pkg/logger"
 	"github.com/gin-gonic/gin"
 	"github.com/prometheus/client_golang/prometheus"
@@ -14,7 +15,14 @@ import (
 )
 
 // NewRouter собирает gin.Engine с маршрутами и middleware.
-func NewRouter(h *Handler, reg *prometheus.Registry, cfg config.Config, l logger.Log) *gin.Engine {
+func NewRouter(
+	h *Handler,
+	ah *AuthHandler,
+	jwtManager *jwtpkg.Manager,
+	reg *prometheus.Registry,
+	cfg config.Config,
+	l logger.Log,
+) *gin.Engine {
 	r := gin.New()
 
 	coll := httpmetric.NewPrometheusHttpCollector(cfg.Name, reg)
@@ -27,12 +35,25 @@ func NewRouter(h *Handler, reg *prometheus.Registry, cfg config.Config, l logger
 	r.GET("/health", func(c *gin.Context) {
 		c.JSON(http.StatusOK, gin.H{"status": "ok", "ts": time.Now().UTC()})
 	})
-
 	r.GET("/metrics", gin.WrapH(promhttp.HandlerFor(reg, promhttp.HandlerOpts{})))
 
-	v1 := r.Group("/api/v1")
+	// Публичные маршруты — регистрация и вход.
+	authGroup := r.Group("/api/v1/auth")
 	{
-		v1.POST("/check", h.Check)
+		authGroup.POST("/register", ah.Register)
+		authGroup.POST("/login", ah.Login)
+	}
+
+	// Публичные маршруты бота — вызываются Telegram-ботом без JWT.
+	bot := r.Group("/api/v1")
+	{
+		bot.POST("/check", h.Check)
+	}
+
+	// Защищённые маршруты — требуют Bearer-токен.
+	v1 := r.Group("/api/v1")
+	v1.Use(JWTMiddleware(jwtManager))
+	{
 		v1.GET("/history", h.GetHistory)
 		v1.GET("/history/:id", h.GetRecord)
 	}
