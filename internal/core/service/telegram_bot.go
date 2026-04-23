@@ -6,6 +6,7 @@ import (
 	"encoding/hex"
 	"fmt"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/Revachol/SpamBreaker_VK_back/internal/core/repository/interfaces"
@@ -176,40 +177,53 @@ func generateToken() (string, error) {
 }
 
 // VerifyChat проверяет, что бот находится в указанном чате и имеет необходимые права.
+// chatID может быть числовым ID, @username или ссылкой https://t.me/username.
 func (uc *TelegramBotUseCase) VerifyChat(ctx context.Context, applicationID, chatID string) error {
-	// Получаем приложение
 	app, err := uc.applicationRepo.GetByID(ctx, applicationID)
 	if err != nil {
 		uc.logger.Errorf("Error getting application: %s", err)
 		return err
 	}
-
 	if app == nil {
-		uc.logger.Warnf("Application not found: %s", applicationID)
 		return fmt.Errorf("application not found")
 	}
 
-	// Преобразуем chatID в int64
-	chatIDInt, err := strconv.ParseInt(chatID, 10, 64)
-	if err != nil {
-		uc.logger.Errorf("Error parsing chat ID %s: %s", chatID, err)
-		return fmt.Errorf("invalid chat ID format")
+	var msg tgbotapi.MessageConfig
+	normalizedID := chatID
+
+	switch {
+	case strings.HasPrefix(chatID, "https://t.me/"):
+		// Извлекаем username из ссылки
+		username := "@" + strings.TrimPrefix(chatID, "https://t.me/")
+		// Убираем возможные query-параметры
+		if idx := strings.IndexByte(username, '?'); idx != -1 {
+			username = username[:idx]
+		}
+		normalizedID = username
+		msg = tgbotapi.MessageConfig{
+			BaseChat: tgbotapi.BaseChat{ChannelUsername: username},
+			Text:     "✅ Бот SpamBreaker успешно подключён к чату!",
+		}
+	case strings.HasPrefix(chatID, "@"):
+		normalizedID = chatID
+		msg = tgbotapi.MessageConfig{
+			BaseChat: tgbotapi.BaseChat{ChannelUsername: chatID},
+			Text:     "✅ Бот SpamBreaker успешно подключён к чату!",
+		}
+	default:
+		chatIDInt, err := strconv.ParseInt(chatID, 10, 64)
+		if err != nil {
+			return fmt.Errorf("неверный формат: ожидается @username, ссылка https://t.me/username или числовой ID")
+		}
+		msg = tgbotapi.NewMessage(chatIDInt, "✅ Бот SpamBreaker успешно подключён к чату!")
 	}
 
-	// Проверяем, что бот находится в чате, отправляя тестовое сообщение
-	// Это требует, чтобы бот уже был добавлен в чат
-	msg := tgbotapi.NewMessage(chatIDInt, "Проверка подключения бота к чату...")
-	msg.ParseMode = tgbotapi.ModeMarkdown
-
-	// Отправляем сообщение в чат
-	_, err = uc.telegramAPI.Send(msg)
-	if err != nil {
-		uc.logger.Errorf("Error sending verification message to chat %d: %s", chatIDInt, err)
-		return fmt.Errorf("failed to send message to chat - bot may not be in chat or lacks permissions")
+	if _, err := uc.telegramAPI.Send(msg); err != nil {
+		uc.logger.Errorf("Error sending verification message to chat %q: %s", normalizedID, err)
+		return fmt.Errorf("бот не найден в чате или нет прав на отправку сообщений")
 	}
 
-	// Обновляем приложение с ID чата и временем верификации
-	app.ExternalID = chatID
+	app.ExternalID = normalizedID
 	app.Status = "active"
 	app.VerifiedAt = time.Now().UTC()
 	app.UpdatedAt = time.Now().UTC()

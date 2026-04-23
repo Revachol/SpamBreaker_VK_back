@@ -56,6 +56,7 @@ type verifyChatResponse struct {
 	Verified  bool   `json:"verified"`
 	Message   string `json:"message"`
 	Activated bool   `json:"activated"`
+	Token     string `json:"token"`
 }
 
 // ---------- Handlers ----------
@@ -377,9 +378,15 @@ func (h *TelegramBotHandler) VerifyChat(c *gin.Context) {
 		}
 	}
 
+	// Если приложения нет — создаём автоматически
 	if userApp == nil {
-		c.JSON(http.StatusNotFound, errorResponse{Error: "telegram bot not found"})
-		return
+		newApp, err := h.telegramBot.GenerateToken(c.Request.Context(), userID.(string))
+		if err != nil {
+			h.logger.Errorf("Error creating application: %s", err)
+			c.JSON(http.StatusInternalServerError, errorResponse{Error: "failed to create application"})
+			return
+		}
+		userApp = newApp
 	}
 
 	// Проверяем чат
@@ -394,6 +401,7 @@ func (h *TelegramBotHandler) VerifyChat(c *gin.Context) {
 		Verified:  true,
 		Message:   "Bot successfully verified and activated in chat",
 		Activated: true,
+		Token:     userApp.Token,
 	})
 }
 
