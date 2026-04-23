@@ -50,6 +50,8 @@ func Run() {
 	// 3. Репозитории.
 	messageRepo := repository.NewMessageRepository(pgx, app.logger)
 	moderatorRepo := repository.NewModeratorRepository(pgx, app.logger)
+	applicationRepo := repository.NewApplicationRepository(pgx, app.logger)
+	applicationSettingsRepo := repository.NewApplicationSettingsRepository(pgx, app.logger)
 
 	// 4. JWT-менеджер.
 	jwtManager := jwtpkg.NewManager(cfg.JWT.Secret, cfg.JWT.TTL)
@@ -57,13 +59,16 @@ func Run() {
 	// 5. Бизнес-логика.
 	moderationUC := service.NewModerationUseCase(mlClient, messageRepo, app.logger)
 	authUC := service.NewAuthUseCase(moderatorRepo, jwtManager, app.logger)
+	telegramBotUC := service.NewTelegramBotUseCase(applicationRepo, applicationSettingsRepo, app.logger)
 
 	// 6. Transport layer.
-	handler := httphandler.NewHandler(moderationUC, app.logger)
+	handler := httphandler.NewHandler(moderationUC, telegramBotUC, app.logger)
 	authHandler := httphandler.NewAuthHandler(authUC, app.logger)
+	telegramBotHandler := httphandler.NewTelegramBotHandler(telegramBotUC, app.logger)
 	router := httphandler.NewRouter(
 		handler,
 		authHandler,
+		telegramBotHandler,
 		jwtManager,
 		app.registry,
 		app.config,

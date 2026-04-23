@@ -18,6 +18,7 @@ import (
 func NewRouter(
 	h *Handler,
 	ah *AuthHandler,
+	tbh *TelegramBotHandler,
 	jwtManager *jwtpkg.Manager,
 	reg *prometheus.Registry,
 	cfg *config.Config,
@@ -48,6 +49,8 @@ func NewRouter(
 	bot := r.Group("/api/v1")
 	{
 		bot.POST("/check", h.Check)
+		// Активация Telegram бота
+		bot.POST("/bots/telegram/activate", tbh.ActivateBot)
 	}
 
 	// Защищённые маршруты — требуют Bearer-токен.
@@ -56,6 +59,16 @@ func NewRouter(
 	{
 		v1.GET("/history", h.GetHistory)
 		v1.GET("/history/:id", h.GetRecord)
+
+		// Telegram bot routes
+		telegram := v1.Group("/bots/telegram")
+		{
+			telegram.GET("/token", tbh.GetToken)
+			telegram.GET("/status", tbh.GetStatus)
+			telegram.GET("/settings", tbh.GetSettings)
+			telegram.POST("/settings", tbh.UpdateSettings)
+			telegram.POST("/disable", tbh.DisableBot)
+		}
 	}
 
 	return r

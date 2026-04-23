@@ -11,12 +11,13 @@ import (
 
 // Handler держит зависимости всех хендлеров.
 type Handler struct {
-	logger     logger.Log
-	moderation *service.ModerationUseCase
+	logger      logger.Log
+	moderation  *service.ModerationUseCase
+	telegramBot *service.TelegramBotUseCase
 }
 
-func NewHandler(moderation *service.ModerationUseCase, l logger.Log) *Handler {
-	return &Handler{moderation: moderation, logger: l}
+func NewHandler(moderation *service.ModerationUseCase, telegramBot *service.TelegramBotUseCase, l logger.Log) *Handler {
+	return &Handler{moderation: moderation, telegramBot: telegramBot, logger: l}
 }
 
 // ---------- Request / Response DTOs ----------
