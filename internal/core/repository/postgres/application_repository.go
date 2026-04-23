@@ -24,9 +24,14 @@ func NewApplicationRepository(db *pgxpool.Pool, l logger.Log) *ApplicationReposi
 
 // Create сохраняет новое приложение.
 func (r *ApplicationRepository) Create(ctx context.Context, app *domain.Application) error {
+	// For active applications, set VerifiedAt to current time
+	if app.Status == "active" {
+		app.VerifiedAt = time.Now().UTC()
+	}
+
 	query := `
-		INSERT INTO application (id, name, platform, external_id, token, owner_id, status, created_at, updated_at)
-		VALUES (COALESCE($1, gen_random_uuid()), $2, $3, $4, $5, $6, $7, $8, $9)
+		INSERT INTO application (id, name, platform, external_id, token, owner_id, status, verified_at, created_at, updated_at)
+		VALUES (COALESCE($1, gen_random_uuid()), $2, $3, $4, $5, $6, $7, $8, $9, $10)
 		RETURNING id, created_at, updated_at
 	`
 
@@ -51,6 +56,7 @@ func (r *ApplicationRepository) Create(ctx context.Context, app *domain.Applicat
 		app.Token,
 		app.OwnerID,
 		app.Status,
+		app.VerifiedAt,
 		now,
 		now,
 	).Scan(&generatedID, &app.CreatedAt, &app.UpdatedAt)
@@ -66,7 +72,7 @@ func (r *ApplicationRepository) Create(ctx context.Context, app *domain.Applicat
 // GetByID ищет приложение по UUID. Возвращает (nil, nil) если не найден.
 func (r *ApplicationRepository) GetByID(ctx context.Context, id string) (*domain.Application, error) {
 	query := `
-		SELECT id, name, platform, external_id, token, owner_id, status, created_at, updated_at
+		SELECT id, name, platform, external_id, token, owner_id, status, verified_at, created_at, updated_at
 		FROM application
 		WHERE id = $1
 	`
@@ -83,6 +89,7 @@ func (r *ApplicationRepository) GetByID(ctx context.Context, id string) (*domain
 		&app.Token,
 		&ownerID,
 		&app.Status,
+		&app.VerifiedAt,
 		&app.CreatedAt,
 		&app.UpdatedAt,
 	)
@@ -105,7 +112,7 @@ func (r *ApplicationRepository) GetByID(ctx context.Context, id string) (*domain
 // GetByToken ищет приложение по токену. Возвращает (nil, nil) если не найден.
 func (r *ApplicationRepository) GetByToken(ctx context.Context, token string) (*domain.Application, error) {
 	query := `
-		SELECT id, name, platform, external_id, token, owner_id, status, created_at, updated_at
+		SELECT id, name, platform, external_id, token, owner_id, status, verified_at, created_at, updated_at
 		FROM application
 		WHERE token = $1
 	`
@@ -122,6 +129,7 @@ func (r *ApplicationRepository) GetByToken(ctx context.Context, token string) (*
 		&app.Token,
 		&ownerID,
 		&app.Status,
+		&app.VerifiedAt,
 		&app.CreatedAt,
 		&app.UpdatedAt,
 	)
@@ -144,7 +152,7 @@ func (r *ApplicationRepository) GetByToken(ctx context.Context, token string) (*
 // GetByExternalIDAndPlatform ищет приложение по внешнему ID и платформе. Возвращает (nil, nil) если не найден.
 func (r *ApplicationRepository) GetByExternalIDAndPlatform(ctx context.Context, externalID string, platform string) (*domain.Application, error) {
 	query := `
-		SELECT id, name, platform, external_id, token, owner_id, status, created_at, updated_at
+		SELECT id, name, platform, external_id, token, owner_id, status, verified_at, created_at, updated_at
 		FROM application
 		WHERE external_id = $1 AND platform = $2
 	`
@@ -161,6 +169,7 @@ func (r *ApplicationRepository) GetByExternalIDAndPlatform(ctx context.Context, 
 		&app.Token,
 		&ownerID,
 		&app.Status,
+		&app.VerifiedAt,
 		&app.CreatedAt,
 		&app.UpdatedAt,
 	)
@@ -184,7 +193,7 @@ func (r *ApplicationRepository) GetByExternalIDAndPlatform(ctx context.Context, 
 func (r *ApplicationRepository) Update(ctx context.Context, app *domain.Application) error {
 	query := `
 		UPDATE application
-		SET name = $2, platform = $3, external_id = $4, token = $5, owner_id = $6, status = $7, updated_at = $8
+		SET name = $2, platform = $3, external_id = $4, token = $5, owner_id = $6, status = $7, verified_at = $8, updated_at = $9
 		WHERE id = $1
 		RETURNING updated_at
 	`
@@ -208,6 +217,7 @@ func (r *ApplicationRepository) Update(ctx context.Context, app *domain.Applicat
 		app.Token,
 		ownerID,
 		app.Status,
+		app.VerifiedAt,
 		now,
 	).Scan(&app.UpdatedAt)
 	if err != nil {
@@ -234,7 +244,7 @@ func (r *ApplicationRepository) Delete(ctx context.Context, id string) error {
 // ListByOwner возвращает список приложений владельца.
 func (r *ApplicationRepository) ListByOwner(ctx context.Context, ownerID string) ([]*domain.Application, error) {
 	query := `
-		SELECT id, name, platform, external_id, token, owner_id, status, created_at, updated_at
+		SELECT id, name, platform, external_id, token, owner_id, status, verified_at, created_at, updated_at
 		FROM application
 		WHERE owner_id = $1
 		ORDER BY created_at DESC
@@ -267,6 +277,7 @@ func (r *ApplicationRepository) ListByOwner(ctx context.Context, ownerID string)
 			&app.Token,
 			&appOwnerID,
 			&app.Status,
+			&app.VerifiedAt,
 			&app.CreatedAt,
 			&app.UpdatedAt,
 		)

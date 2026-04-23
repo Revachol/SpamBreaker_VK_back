@@ -67,6 +67,7 @@ func NewRouter(
 			telegram.GET("/status", tbh.GetStatus)
 			telegram.GET("/settings", tbh.GetSettings)
 			telegram.POST("/settings", tbh.UpdateSettings)
+			telegram.POST("/verify-chat", tbh.VerifyChat)
 			telegram.POST("/disable", tbh.DisableBot)
 		}
 	}

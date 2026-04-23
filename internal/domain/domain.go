@@ -31,6 +31,7 @@ type Application struct {
 	Token      string    `json:"token"`       // секретный токен для Core API
 	OwnerID    string    `json:"owner_id"`    // ID модератора-владельца
 	Status     string    `json:"status"`      // "active", "suspended", "inactive"
+	VerifiedAt time.Time `json:"verified_at"` // время последней успешной верификации
 	CreatedAt  time.Time `json:"created_at"`
 	UpdatedAt  time.Time `json:"updated_at"`
 }
