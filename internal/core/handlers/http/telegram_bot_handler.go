@@ -47,6 +47,17 @@ type telegramBotSettingsRequest struct {
 	Enabled     *bool     `json:"enabled,omitempty"`
 }
 
+type verifyChatRequest struct {
+	ChatID string `json:"chat_id" binding:"required"`
+}
+
+type verifyChatResponse struct {
+	Success   bool   `json:"success"`
+	Verified  bool   `json:"verified"`
+	Message   string `json:"message"`
+	Activated bool   `json:"activated"`
+}
+
 // ---------- Handlers ----------
 
 // GetToken godoc
@@ -320,6 +331,70 @@ func (h *TelegramBotHandler) DisableBot(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, gin.H{"success": true})
+}
+
+// VerifyChat godoc
+//
+//	@Summary     Проверить и активировать Telegram бота
+//	@Description Проверяет, что бот находится в указанном чате, и активирует его
+//	@Tags        telegram
+//	@Accept      json
+//	@Produce     json
+//	@Param       body body     verifyChatRequest true "ID или username чата Telegram"
+//	@Success     200  {object} verifyChatResponse
+//	@Failure     400  {object} errorResponse
+//	@Failure     500  {object} errorResponse
+//	@Router      /api/v1/bots/telegram/verify-chat [post]
+//	@Security    Bearer
+func (h *TelegramBotHandler) VerifyChat(c *gin.Context) {
+	var req verifyChatRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, errorResponse{Error: err.Error()})
+		return
+	}
+
+	// Получаем ID пользователя из контекста
+	userID, exists := c.Get("user_id")
+	if !exists {
+		c.JSON(http.StatusUnauthorized, errorResponse{Error: "user not authenticated"})
+		return
+	}
+
+	// Получаем приложение пользователя
+	apps, err := h.telegramBot.ListBots(c.Request.Context(), userID.(string))
+	if err != nil {
+		h.logger.Errorf("Error listing bots: %s", err)
+		c.JSON(http.StatusInternalServerError, errorResponse{Error: "failed to list bots"})
+		return
+	}
+
+	// Ищем Telegram бот пользователя
+	var userApp *domain.Application
+	for _, app := range apps {
+		if app.Platform == "telegram" {
+			userApp = app
+			break
+		}
+	}
+
+	if userApp == nil {
+		c.JSON(http.StatusNotFound, errorResponse{Error: "telegram bot not found"})
+		return
+	}
+
+	// Проверяем чат
+	if err := h.telegramBot.VerifyChat(c.Request.Context(), userApp.ID, req.ChatID); err != nil {
+		h.logger.Errorf("Error verifying chat: %s", err)
+		c.JSON(http.StatusInternalServerError, errorResponse{Error: "failed to verify chat: " + err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusOK, verifyChatResponse{
+		Success:   true,
+		Verified:  true,
+		Message:   "Bot successfully verified and activated in chat",
+		Activated: true,
+	})
 }
 
 // ActivateBot godoc
