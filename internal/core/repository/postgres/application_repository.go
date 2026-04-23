@@ -241,6 +241,140 @@ func (r *ApplicationRepository) Delete(ctx context.Context, id string) error {
 	return nil
 }
 
+// ListByOwnerOrAdmin возвращает приложения, где пользователь — владелец или соадмин.
+func (r *ApplicationRepository) ListByOwnerOrAdmin(ctx context.Context, userID string) ([]*domain.Application, error) {
+	query := `
+		SELECT DISTINCT a.id, a.name, a.platform, a.external_id, a.token, a.owner_id, a.status, a.verified_at, a.created_at, a.updated_at
+		FROM application a
+		LEFT JOIN application_admins aa ON aa.application_id = a.id
+		WHERE a.owner_id = $1 OR aa.moderator_id = $1
+		ORDER BY a.created_at DESC
+	`
+
+	parsedUserID, err := uuid.Parse(userID)
+	if err != nil {
+		r.logger.Errorf("Error parsing user id %s: %s", userID, err)
+		return nil, err
+	}
+
+	rows, err := r.db.Query(ctx, query, parsedUserID)
+	if err != nil {
+		r.logger.Errorf("Error listing accessible applications for user %s: %s", userID, err)
+		return nil, err
+	}
+	defer rows.Close()
+
+	var apps []*domain.Application
+	for rows.Next() {
+		var app domain.Application
+		var appID uuid.UUID
+		var appOwnerID uuid.NullUUID
+
+		err := rows.Scan(
+			&appID,
+			&app.Name,
+			&app.Platform,
+			&app.ExternalID,
+			&app.Token,
+			&appOwnerID,
+			&app.Status,
+			&app.VerifiedAt,
+			&app.CreatedAt,
+			&app.UpdatedAt,
+		)
+		if err != nil {
+			r.logger.Errorf("Error scanning application row: %s", err)
+			return nil, err
+		}
+
+		app.ID = appID.String()
+		if appOwnerID.Valid {
+			app.OwnerID = appOwnerID.UUID.String()
+		}
+
+		apps = append(apps, &app)
+	}
+
+	if err := rows.Err(); err != nil {
+		r.logger.Errorf("Error iterating application rows: %s", err)
+		return nil, err
+	}
+
+	return apps, nil
+}
+
+// AddAdmin добавляет соадмина к приложению.
+func (r *ApplicationRepository) AddAdmin(ctx context.Context, appID, moderatorID string) error {
+	query := `
+		INSERT INTO application_admins (application_id, moderator_id)
+		VALUES ($1, $2)
+		ON CONFLICT DO NOTHING
+	`
+
+	parsedAppID, err := uuid.Parse(appID)
+	if err != nil {
+		return err
+	}
+	parsedModID, err := uuid.Parse(moderatorID)
+	if err != nil {
+		return err
+	}
+
+	_, err = r.db.Exec(ctx, query, parsedAppID, parsedModID)
+	if err != nil {
+		r.logger.Errorf("Error adding admin %s to app %s: %s", moderatorID, appID, err)
+	}
+	return err
+}
+
+// RemoveAdmin удаляет соадмина из приложения.
+func (r *ApplicationRepository) RemoveAdmin(ctx context.Context, appID, moderatorID string) error {
+	query := `DELETE FROM application_admins WHERE application_id = $1 AND moderator_id = $2`
+
+	parsedAppID, err := uuid.Parse(appID)
+	if err != nil {
+		return err
+	}
+	parsedModID, err := uuid.Parse(moderatorID)
+	if err != nil {
+		return err
+	}
+
+	_, err = r.db.Exec(ctx, query, parsedAppID, parsedModID)
+	if err != nil {
+		r.logger.Errorf("Error removing admin %s from app %s: %s", moderatorID, appID, err)
+	}
+	return err
+}
+
+// ListAdminIDs возвращает список ID модераторов-соадминов приложения.
+func (r *ApplicationRepository) ListAdminIDs(ctx context.Context, appID string) ([]string, error) {
+	query := `SELECT moderator_id FROM application_admins WHERE application_id = $1`
+
+	parsedAppID, err := uuid.Parse(appID)
+	if err != nil {
+		return nil, err
+	}
+
+	rows, err := r.db.Query(ctx, query, parsedAppID)
+	if err != nil {
+		r.logger.Errorf("Error listing admins for app %s: %s", appID, err)
+		return nil, err
+	}
+	defer rows.Close()
+
+	var ids []string
+	for rows.Next() {
+		var modID uuid.UUID
+		if err := rows.Scan(&modID); err != nil {
+			return nil, err
+		}
+		ids = append(ids, modID.String())
+	}
+
+	return ids, rows.Err()
+}
+
 // ListByOwner возвращает список приложений владельца.
 func (r *ApplicationRepository) ListByOwner(ctx context.Context, ownerID string) ([]*domain.Application, error) {
 	query := `

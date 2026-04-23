@@ -20,6 +20,7 @@ import (
 type TelegramBotUseCase struct {
 	applicationRepo         interfaces.ApplicationRepository
 	applicationSettingsRepo interfaces.ApplicationSettingsRepository
+	moderatorRepo           interfaces.ModeratorRepository
 	telegramAPI             *tgbotapi.BotAPI
 	logger                  logger.Log
 }
@@ -27,12 +28,14 @@ type TelegramBotUseCase struct {
 func NewTelegramBotUseCase(
 	applicationRepo interfaces.ApplicationRepository,
 	applicationSettingsRepo interfaces.ApplicationSettingsRepository,
+	moderatorRepo interfaces.ModeratorRepository,
 	telegramAPI *tgbotapi.BotAPI,
 	l logger.Log,
 ) *TelegramBotUseCase {
 	return &TelegramBotUseCase{
 		applicationRepo:         applicationRepo,
 		applicationSettingsRepo: applicationSettingsRepo,
+		moderatorRepo:           moderatorRepo,
 		telegramAPI:             telegramAPI,
 		logger:                  l,
 	}
@@ -165,6 +168,79 @@ func (uc *TelegramBotUseCase) DisableBot(ctx context.Context, applicationID stri
 // ListBots возвращает список ботов владельца.
 func (uc *TelegramBotUseCase) ListBots(ctx context.Context, ownerID string) ([]*domain.Application, error) {
 	return uc.applicationRepo.ListByOwner(ctx, ownerID)
+}
+
+// ListAccessibleBots возвращает боты, к которым у пользователя есть доступ (владелец или соадмин).
+func (uc *TelegramBotUseCase) ListAccessibleBots(ctx context.Context, userID string) ([]*domain.Application, error) {
+	return uc.applicationRepo.ListByOwnerOrAdmin(ctx, userID)
+}
+
+// AddAdmin добавляет соадмина по username. Только владелец может добавлять.
+func (uc *TelegramBotUseCase) AddAdmin(ctx context.Context, ownerID, appID, targetUsername string) (*domain.Moderator, error) {
+	app, err := uc.applicationRepo.GetByID(ctx, appID)
+	if err != nil {
+		return nil, err
+	}
+	if app == nil || app.OwnerID != ownerID {
+		return nil, fmt.Errorf("forbidden")
+	}
+
+	target, err := uc.moderatorRepo.GetByUsername(ctx, targetUsername)
+	if err != nil {
+		return nil, err
+	}
+	if target == nil {
+		return nil, fmt.Errorf("user not found")
+	}
+	if target.ID == ownerID {
+		return nil, fmt.Errorf("cannot add yourself as admin")
+	}
+
+	if err := uc.applicationRepo.AddAdmin(ctx, appID, target.ID); err != nil {
+		return nil, err
+	}
+	return target, nil
+}
+
+// RemoveAdmin удаляет соадмина по username. Только владелец может удалять.
+func (uc *TelegramBotUseCase) RemoveAdmin(ctx context.Context, ownerID, appID, targetUsername string) error {
+	app, err := uc.applicationRepo.GetByID(ctx, appID)
+	if err != nil {
+		return err
+	}
+	if app == nil || app.OwnerID != ownerID {
+		return fmt.Errorf("forbidden")
+	}
+
+	target, err := uc.moderatorRepo.GetByUsername(ctx, targetUsername)
+	if err != nil {
+		return err
+	}
+	if target == nil {
+		return fmt.Errorf("user not found")
+	}
+
+	return uc.applicationRepo.RemoveAdmin(ctx, appID, target.ID)
+}
+
+// GetAdmins возвращает список соадминов приложения.
+func (uc *TelegramBotUseCase) GetAdmins(ctx context.Context, appID string) ([]*domain.Moderator, error) {
+	ids, err := uc.applicationRepo.ListAdminIDs(ctx, appID)
+	if err != nil {
+		return nil, err
+	}
+
+	var admins []*domain.Moderator
+	for _, id := range ids {
+		mod, err := uc.moderatorRepo.GetByID(ctx, id)
+		if err != nil {
+			return nil, err
+		}
+		if mod != nil {
+			admins = append(admins, mod)
+		}
+	}
+	return admins, nil
 }
 
 // IsChatActive проверяет, зарегистрирован ли чат в системе.

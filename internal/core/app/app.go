@@ -72,7 +72,7 @@ func Run() {
 	// 6. Бизнес-логика.
 	moderationUC := service.NewModerationUseCase(mlClient, messageRepo, app.logger)
 	authUC := service.NewAuthUseCase(moderatorRepo, jwtManager, app.logger)
-	telegramBotUC := service.NewTelegramBotUseCase(applicationRepo, applicationSettingsRepo, telegramAPI, app.logger)
+	telegramBotUC := service.NewTelegramBotUseCase(applicationRepo, applicationSettingsRepo, moderatorRepo, telegramAPI, app.logger)
 
 	// 6. Transport layer.
 	handler := httphandler.NewHandler(moderationUC, telegramBotUC, app.logger)

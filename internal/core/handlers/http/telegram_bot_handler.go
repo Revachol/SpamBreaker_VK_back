@@ -59,6 +59,15 @@ type verifyChatResponse struct {
 	Token     string `json:"token"`
 }
 
+type adminInfoResponse struct {
+	ID       string `json:"id"`
+	Username string `json:"username"`
+}
+
+type addAdminRequest struct {
+	Username string `json:"username" binding:"required"`
+}
+
 // ---------- Handlers ----------
 
 // GetToken godoc
@@ -181,7 +190,7 @@ func (h *TelegramBotHandler) GetSettings(c *gin.Context) {
 	}
 
 	// Получаем список ботов пользователя (берем первый активный)
-	apps, err := h.telegramBot.ListBots(c.Request.Context(), userID.(string))
+	apps, err := h.telegramBot.ListAccessibleBots(c.Request.Context(), userID.(string))
 	if err != nil {
 		h.logger.Errorf("Error listing bots: %s", err)
 		c.JSON(http.StatusInternalServerError, errorResponse{Error: "failed to list bots"})
@@ -246,7 +255,7 @@ func (h *TelegramBotHandler) UpdateSettings(c *gin.Context) {
 	}
 
 	// Получаем список ботов пользователя (берем первый активный)
-	apps, err := h.telegramBot.ListBots(c.Request.Context(), userID.(string))
+	apps, err := h.telegramBot.ListAccessibleBots(c.Request.Context(), userID.(string))
 	if err != nil {
 		h.logger.Errorf("Error listing bots: %s", err)
 		c.JSON(http.StatusInternalServerError, errorResponse{Error: "failed to list bots"})
@@ -320,7 +329,7 @@ func (h *TelegramBotHandler) DisableBot(c *gin.Context) {
 	}
 
 	// Получаем список ботов пользователя (берем первый активный)
-	apps, err := h.telegramBot.ListBots(c.Request.Context(), userID.(string))
+	apps, err := h.telegramBot.ListAccessibleBots(c.Request.Context(), userID.(string))
 	if err != nil {
 		h.logger.Errorf("Error listing bots: %s", err)
 		c.JSON(http.StatusInternalServerError, errorResponse{Error: "failed to list bots"})
@@ -447,6 +456,171 @@ func (h *TelegramBotHandler) IsChatActive(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, gin.H{"active": active})
+}
+
+// GetAdmins возвращает список соадминов бота текущего пользователя.
+func (h *TelegramBotHandler) GetAdmins(c *gin.Context) {
+	userID, exists := c.Get("user_id")
+	if !exists {
+		c.JSON(http.StatusUnauthorized, errorResponse{Error: "user not authenticated"})
+		return
+	}
+
+	apps, err := h.telegramBot.ListAccessibleBots(c.Request.Context(), userID.(string))
+	if err != nil {
+		h.logger.Errorf("Error listing bots: %s", err)
+		c.JSON(http.StatusInternalServerError, errorResponse{Error: "failed to list bots"})
+		return
+	}
+
+	var activeApp *domain.Application
+	for _, app := range apps {
+		if app.Platform == "telegram" && app.Status == "active" {
+			activeApp = app
+			break
+		}
+	}
+	if activeApp == nil {
+		c.JSON(http.StatusNotFound, errorResponse{Error: "no active telegram bot found"})
+		return
+	}
+
+	admins, err := h.telegramBot.GetAdmins(c.Request.Context(), activeApp.ID)
+	if err != nil {
+		h.logger.Errorf("Error getting admins: %s", err)
+		c.JSON(http.StatusInternalServerError, errorResponse{Error: "failed to get admins"})
+		return
+	}
+
+	resp := make([]adminInfoResponse, 0, len(admins))
+	for _, m := range admins {
+		resp = append(resp, adminInfoResponse{ID: m.ID, Username: m.Username})
+	}
+	c.JSON(http.StatusOK, resp)
+}
+
+// AddAdmin добавляет соадмина по username. Только владелец бота.
+func (h *TelegramBotHandler) AddAdmin(c *gin.Context) {
+	userID, exists := c.Get("user_id")
+	if !exists {
+		c.JSON(http.StatusUnauthorized, errorResponse{Error: "user not authenticated"})
+		return
+	}
+
+	var req addAdminRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, errorResponse{Error: err.Error()})
+		return
+	}
+
+	apps, err := h.telegramBot.ListBots(c.Request.Context(), userID.(string))
+	if err != nil {
+		h.logger.Errorf("Error listing bots: %s", err)
+		c.JSON(http.StatusInternalServerError, errorResponse{Error: "failed to list bots"})
+		return
+	}
+
+	var activeApp *domain.Application
+	for _, app := range apps {
+		if app.Platform == "telegram" && app.Status == "active" {
+			activeApp = app
+			break
+		}
+	}
+	if activeApp == nil {
+		c.JSON(http.StatusNotFound, errorResponse{Error: "no active telegram bot found"})
+		return
+	}
+
+	added, err := h.telegramBot.AddAdmin(c.Request.Context(), userID.(string), activeApp.ID, req.Username)
+	if err != nil {
+		switch err.Error() {
+		case "forbidden":
+			c.JSON(http.StatusForbidden, errorResponse{Error: "only the bot owner can manage admins"})
+		case "user not found":
+			c.JSON(http.StatusNotFound, errorResponse{Error: "user not found"})
+		case "cannot add yourself as admin":
+			c.JSON(http.StatusBadRequest, errorResponse{Error: "cannot add yourself as admin"})
+		default:
+			h.logger.Errorf("Error adding admin: %s", err)
+			c.JSON(http.StatusInternalServerError, errorResponse{Error: "failed to add admin"})
+		}
+		return
+	}
+
+	admins, err := h.telegramBot.GetAdmins(c.Request.Context(), activeApp.ID)
+	if err != nil {
+		h.logger.Errorf("Error getting admins after add: %s", err)
+		c.JSON(http.StatusInternalServerError, errorResponse{Error: "failed to get admins"})
+		return
+	}
+
+	_ = added
+	resp := make([]adminInfoResponse, 0, len(admins))
+	for _, m := range admins {
+		resp = append(resp, adminInfoResponse{ID: m.ID, Username: m.Username})
+	}
+	c.JSON(http.StatusOK, resp)
+}
+
+// RemoveAdmin удаляет соадмина по username. Только владелец бота.
+func (h *TelegramBotHandler) RemoveAdmin(c *gin.Context) {
+	userID, exists := c.Get("user_id")
+	if !exists {
+		c.JSON(http.StatusUnauthorized, errorResponse{Error: "user not authenticated"})
+		return
+	}
+
+	targetUsername := c.Param("username")
+	if targetUsername == "" {
+		c.JSON(http.StatusBadRequest, errorResponse{Error: "username is required"})
+		return
+	}
+
+	apps, err := h.telegramBot.ListBots(c.Request.Context(), userID.(string))
+	if err != nil {
+		h.logger.Errorf("Error listing bots: %s", err)
+		c.JSON(http.StatusInternalServerError, errorResponse{Error: "failed to list bots"})
+		return
+	}
+
+	var activeApp *domain.Application
+	for _, app := range apps {
+		if app.Platform == "telegram" && app.Status == "active" {
+			activeApp = app
+			break
+		}
+	}
+	if activeApp == nil {
+		c.JSON(http.StatusNotFound, errorResponse{Error: "no active telegram bot found"})
+		return
+	}
+
+	if err := h.telegramBot.RemoveAdmin(c.Request.Context(), userID.(string), activeApp.ID, targetUsername); err != nil {
+		switch err.Error() {
+		case "forbidden":
+			c.JSON(http.StatusForbidden, errorResponse{Error: "only the bot owner can manage admins"})
+		case "user not found":
+			c.JSON(http.StatusNotFound, errorResponse{Error: "user not found"})
+		default:
+			h.logger.Errorf("Error removing admin: %s", err)
+			c.JSON(http.StatusInternalServerError, errorResponse{Error: "failed to remove admin"})
+		}
+		return
+	}
+
+	admins, err := h.telegramBot.GetAdmins(c.Request.Context(), activeApp.ID)
+	if err != nil {
+		h.logger.Errorf("Error getting admins after remove: %s", err)
+		c.JSON(http.StatusInternalServerError, errorResponse{Error: "failed to get admins"})
+		return
+	}
+
+	resp := make([]adminInfoResponse, 0, len(admins))
+	for _, m := range admins {
+		resp = append(resp, adminInfoResponse{ID: m.ID, Username: m.Username})
+	}
+	c.JSON(http.StatusOK, resp)
 }
 
 // ActivateBot godoc
