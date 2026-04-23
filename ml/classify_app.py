@@ -138,7 +138,7 @@ request_duration = Histogram(
 
 # ── Инициализация ───────────────────────────────────────────────────
 
-service = Model
+service = "Model"
 app = FastAPI(title="TinyBERT Sentiment Classifier")
 
 tokenizer = BertTokenizer.from_pretrained(TEACHER_NAME)

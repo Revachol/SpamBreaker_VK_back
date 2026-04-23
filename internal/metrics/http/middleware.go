@@ -1,6 +1,7 @@
 package httpmetric
 
 import (
+	"strings"
 	"time"
 
 	"github.com/Revachol/SpamBreaker_VK_back/internal/middleware"
@@ -16,7 +17,7 @@ func Middleware(m HttpMetricsIface) gin.HandlerFunc {
 		path := middleware.NormalizePath(c.Request.URL.Path)
 		status := c.Writer.Status()
 
-		if path == "/metrics" || path == "/health" {
+		if !strings.HasPrefix(path, "/api/v1/") {
 			return
 		}
 		m.IncHTTPRequest(c.Request.Method, path, status)
