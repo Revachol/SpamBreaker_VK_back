@@ -49,8 +49,8 @@ func NewRouter(
 	bot := r.Group("/api/v1")
 	{
 		bot.POST("/check", h.Check)
-		// Активация Telegram бота
 		bot.POST("/bots/telegram/activate", tbh.ActivateBot)
+		bot.GET("/bots/telegram/internal/chat-active", tbh.IsChatActive)
 	}
 
 	// Защищённые маршруты — требуют Bearer-токен.

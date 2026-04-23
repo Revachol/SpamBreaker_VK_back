@@ -2,6 +2,7 @@ package bot
 
 import (
 	"context"
+	"strconv"
 	"strings"
 	"time"
 
@@ -45,24 +46,34 @@ func (b *Bot) handleMessage(msg *tgbotapi.Message) error {
 	chatID := msg.Chat.ID
 	text := strings.TrimSpace(msg.Text)
 
-	// Команды.
-	switch {
-	case msg.IsCommand():
+	if msg.IsCommand() {
 		return b.handleCommand(msg)
-	case text == "":
-		// Игнорируем медиа и пустые сообщения.
+	}
+	if text == "" {
 		return nil
 	}
 
-	// Показываем "печатает..." пока ждём ответа от API.
+	// Для групповых чатов проверяем, что чат зарегистрирован в системе.
+	if msg.Chat.IsGroup() || msg.Chat.IsSuperGroup() {
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		active, err := b.client.IsChatActive(ctx, strconv.FormatInt(chatID, 10))
+		cancel()
+		if err != nil {
+			b.logger.Warnf("failed to check chat %d registration: %v", chatID, err)
+			return nil
+		}
+		if !active {
+			return nil
+		}
+	}
+
 	typing := tgbotapi.NewChatAction(chatID, tgbotapi.ChatTyping)
 	b.api.Send(typing) //nolint:errcheck
 
-	// Таймаут на запрос к Core API.
 	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 	defer cancel()
 
-	var errOut error = nil
+	var errOut error
 	result, err := b.client.Check(ctx, text)
 
 	var replyText string
@@ -86,23 +97,28 @@ func (b *Bot) handleMessage(msg *tgbotapi.Message) error {
 	return errOut
 }
 
-// handleCommand обрабатывает команды (/start, /help).
+// handleCommand обрабатывает команды (/start, /help, /connect).
 func (b *Bot) handleCommand(msg *tgbotapi.Message) error {
 	var text string
 
 	switch msg.Command() {
+	case "connect":
+		return b.handleConnect(msg)
+
 	case "start":
-		text = "👋 Привет! Я проверяю тональность текста.\n\n" +
-			"Просто напиши мне любое сообщение, и я скажу:\n" +
-			"🟢 Позитив / ⚪️ Нейтрально / 🔴 Негатив\n\n" +
-			"Попробуй написать что-нибудь!"
+		text = "👋 Привет! Я SpamBreaker — бот для модерации групп.\n\n" +
+			"Чтобы подключить меня к группе, зарегистрируйтесь на сайте и следуйте инструкции.\n\n" +
+			"*Команды:*\n" +
+			"/connect TOKEN — привязать бота к группе\n" +
+			"/help — справка"
 
 	case "help":
-		text = "ℹ️ *Как пользоваться:*\n\n" +
-			"Отправь мне любой текст — я проанализирую его тональность с помощью ML-модели.\n\n" +
-			"*Команды:*\n" +
-			"/start — приветствие\n" +
-			"/help  — эта справка"
+		text = "ℹ️ *Как подключить бота к группе:*\n\n" +
+			"1. Зарегистрируйтесь на сайте SpamBreaker\n" +
+			"2. Перейдите в раздел Telegram и скопируйте токен\n" +
+			"3. Добавьте бота в группу как администратора\n" +
+			"4. Отправьте в группе команду: `/connect ВАШ_ТОКЕН`\n\n" +
+			"После этого бот начнёт модерировать сообщения."
 
 	default:
 		text = "❓ Неизвестная команда. Напиши /help для справки."
@@ -113,5 +129,33 @@ func (b *Bot) handleCommand(msg *tgbotapi.Message) error {
 	if _, err := b.api.Send(reply); err != nil {
 		return expectation.BotCommandAnswerError
 	}
+	return nil
+}
+
+// handleConnect обрабатывает команду /connect TOKEN.
+func (b *Bot) handleConnect(msg *tgbotapi.Message) error {
+	token := strings.TrimSpace(msg.CommandArguments())
+	if token == "" {
+		reply := tgbotapi.NewMessage(msg.Chat.ID, "❌ Укажите токен: `/connect ВАШ_ТОКЕН`")
+		reply.ParseMode = tgbotapi.ModeMarkdown
+		b.api.Send(reply) //nolint:errcheck
+		return nil
+	}
+
+	chatID := strconv.FormatInt(msg.Chat.ID, 10)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	if err := b.client.ActivateChat(ctx, token, chatID); err != nil {
+		b.logger.Errorf("failed to activate chat %s with token: %v", chatID, err)
+		reply := tgbotapi.NewMessage(msg.Chat.ID, "❌ Не удалось подключить бота. Проверьте токен и попробуйте снова.")
+		b.api.Send(reply) //nolint:errcheck
+		return err
+	}
+
+	reply := tgbotapi.NewMessage(msg.Chat.ID, "✅ *Бот SpamBreaker успешно подключён!*\n\nМодерация сообщений активирована.")
+	reply.ParseMode = tgbotapi.ModeMarkdown
+	b.api.Send(reply) //nolint:errcheck
 	return nil
 }

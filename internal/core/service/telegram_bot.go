@@ -167,6 +167,15 @@ func (uc *TelegramBotUseCase) ListBots(ctx context.Context, ownerID string) ([]*
 	return uc.applicationRepo.ListByOwner(ctx, ownerID)
 }
 
+// IsChatActive проверяет, зарегистрирован ли чат в системе.
+func (uc *TelegramBotUseCase) IsChatActive(ctx context.Context, chatID string) (bool, error) {
+	app, err := uc.applicationRepo.GetByExternalIDAndPlatform(ctx, chatID, "telegram")
+	if err != nil {
+		return false, err
+	}
+	return app != nil && app.Status == "active", nil
+}
+
 // generateToken генерирует случайный токен.
 func generateToken() (string, error) {
 	bytes := make([]byte, 32)

@@ -72,28 +72,45 @@ type verifyChatResponse struct {
 //	@Router      /api/v1/bots/telegram/token [get]
 //	@Security    Bearer
 func (h *TelegramBotHandler) GetToken(c *gin.Context) {
-	// Получаем ID пользователя из контекста (установлен JWT middleware)
 	userID, exists := c.Get("user_id")
 	if !exists {
 		c.JSON(http.StatusUnauthorized, errorResponse{Error: "user not authenticated"})
 		return
 	}
 
-	// Генерируем токен
-	app, err := h.telegramBot.GenerateToken(c.Request.Context(), userID.(string))
+	// Возвращаем токен существующего приложения если есть, иначе создаём новое.
+	apps, err := h.telegramBot.ListBots(c.Request.Context(), userID.(string))
+	if err != nil {
+		h.logger.Errorf("Error listing bots: %s", err)
+		c.JSON(http.StatusInternalServerError, errorResponse{Error: "failed to list bots"})
+		return
+	}
+
+	for _, a := range apps {
+		if a.Platform == "telegram" {
+			expiresAt := a.CreatedAt.Add(7 * 24 * time.Hour)
+			c.JSON(http.StatusOK, telegramBotTokenResponse{
+				Token:     a.Token,
+				ExpiresAt: expiresAt.Format(time.RFC3339),
+				CreatedAt: a.CreatedAt.Format(time.RFC3339),
+			})
+			return
+		}
+	}
+
+	// Приложения нет — создаём
+	newApp, err := h.telegramBot.GenerateToken(c.Request.Context(), userID.(string))
 	if err != nil {
 		h.logger.Errorf("Error generating token: %s", err)
 		c.JSON(http.StatusInternalServerError, errorResponse{Error: "failed to generate token"})
 		return
 	}
 
-	// Токен действует 24 часа
-	expiresAt := app.CreatedAt.Add(24 * time.Hour)
-
+	expiresAt := newApp.CreatedAt.Add(7 * 24 * time.Hour)
 	c.JSON(http.StatusOK, telegramBotTokenResponse{
-		Token:     app.Token,
+		Token:     newApp.Token,
 		ExpiresAt: expiresAt.Format(time.RFC3339),
-		CreatedAt: app.CreatedAt.Format(time.RFC3339),
+		CreatedAt: newApp.CreatedAt.Format(time.RFC3339),
 	})
 }
 
@@ -403,6 +420,33 @@ func (h *TelegramBotHandler) VerifyChat(c *gin.Context) {
 		Activated: true,
 		Token:     userApp.Token,
 	})
+}
+
+// IsChatActive godoc
+//
+//	@Summary     Проверить, зарегистрирован ли чат
+//	@Description Внутренний эндпоинт для бота — проверяет, активен ли чат в системе
+//	@Tags        telegram-internal
+//	@Produce     json
+//	@Param       chat_id query  string true "Числовой ID чата Telegram"
+//	@Success     200     {object} map[string]bool
+//	@Failure     400     {object} errorResponse
+//	@Router      /api/v1/bots/telegram/internal/chat-active [get]
+func (h *TelegramBotHandler) IsChatActive(c *gin.Context) {
+	chatID := c.Query("chat_id")
+	if chatID == "" {
+		c.JSON(http.StatusBadRequest, errorResponse{Error: "chat_id is required"})
+		return
+	}
+
+	active, err := h.telegramBot.IsChatActive(c.Request.Context(), chatID)
+	if err != nil {
+		h.logger.Errorf("Error checking chat active status: %s", err)
+		c.JSON(http.StatusInternalServerError, errorResponse{Error: "internal error"})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"active": active})
 }
 
 // ActivateBot godoc
