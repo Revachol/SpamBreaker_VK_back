@@ -1,0 +1,18 @@
+package interfaces
+
+import (
+	"context"
+
+	"github.com/Revachol/SpamBreaker_VK_back/internal/domain"
+)
+
+// ApplicationRepository — порт для работы с приложениями (Telegram боты, VK боты, API клиенты).
+type ApplicationRepository interface {
+	Create(ctx context.Context, app *domain.Application) error
+	GetByID(ctx context.Context, id string) (*domain.Application, error)
+	GetByToken(ctx context.Context, token string) (*domain.Application, error)
+	GetByExternalIDAndPlatform(ctx context.Context, externalID string, platform string) (*domain.Application, error)
+	Update(ctx context.Context, app *domain.Application) error
+	Delete(ctx context.Context, id string) error
+	ListByOwner(ctx context.Context, ownerID string) ([]*domain.Application, error)
+}

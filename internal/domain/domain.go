@@ -22,6 +22,33 @@ type CheckRecord struct {
 	CreatedAt time.Time `json:"created_at"`
 }
 
+// Application — подключённое приложение (бот Telegram/VK, API клиент).
+type Application struct {
+	ID         string    `json:"id"`
+	Name       string    `json:"name"`
+	Platform   string    `json:"platform"`    // "telegram", "vk", "api"
+	ExternalID string    `json:"external_id"` // ID чата/группы во внешней платформе
+	Token      string    `json:"token"`       // секретный токен для Core API
+	OwnerID    string    `json:"owner_id"`    // ID модератора-владельца
+	Status     string    `json:"status"`      // "active", "suspended", "inactive"
+	CreatedAt  time.Time `json:"created_at"`
+	UpdatedAt  time.Time `json:"updated_at"`
+}
+
+// ApplicationSettings — настройки приложения.
+type ApplicationSettings struct {
+	ID                string    `json:"id"`
+	ApplicationID     string    `json:"application_id"`
+	ToxicityThreshold int       `json:"toxicity_threshold"` // 0-100
+	ActionOnSpam      string    `json:"action_on_spam"`     // "notify", "delete", "ban", "shadow_ban"
+	AutoModerate      bool      `json:"auto_moderate"`
+	NotifyModerator   bool      `json:"notify_moderator"`
+	AllowedLanguages  []string  `json:"allowed_languages"`
+	BannedWords       []string  `json:"banned_words"` // список запрещенных слов
+	CreatedAt         time.Time `json:"created_at"`
+	UpdatedAt         time.Time `json:"updated_at"`
+}
+
 // ---------- Port: ML-клиент ----------
 
 // Classifier — абстракция над ML-микросервисом.
