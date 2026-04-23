@@ -1,5 +1,12 @@
 """
-FastAPI-сервис для TinyBERT Sentiment.
+FastAPI-сервис для Toxicity + Inappropriateness классификации.
+
+Тело: DeepPavlov/rubert-base-cased-conversational (загружается из HuggingFace)
+Головы: toxicity MLP + inappropriateness Linear (загружаются из model.pt)
+
+Выход бинарный:
+  negative = toxic (>0.6) или inappropriate (>0.5)
+  positive = всё остальное
 
 Два эндпоинта:
   POST /classify       — одно сообщение
@@ -11,11 +18,12 @@ import torch.nn as nn
 import torch.nn.functional as F
 from fastapi import FastAPI, HTTPException, Response, Request
 from pydantic import BaseModel as PydanticBase
-from transformers import BertConfig, BertTokenizer
-from transformers.models.bert.modeling_bert import BertEncoder, BertPooler
+from transformers import BertTokenizer, BertModel
+import transformers
 from prometheus_client import Counter, Histogram, generate_latest, CONTENT_TYPE_LATEST
 import time
 
+transformers.utils.import_utils._torch_version = "2.6.0"
 # ── Схема запроса / ответа ──────────────────────────────────────────
 
 class ClassifyRequest(PydanticBase):
@@ -41,83 +49,12 @@ class BatchResponse(PydanticBase):
 
 # ── Константы ────────────────────────────────────────────────────────
 
-LABELS = {0: "neutral", 1: "positive", 2: "negative"}
-TEACHER_NAME = "blanchefort/rubert-base-cased-sentiment"
+BASE_MODEL = "DeepPavlov/rubert-base-cased-conversational"
 MAX_LEN = 128
 CHECKPOINT = "model.pt"
+TOX_THRESHOLD = 0.75
+INAPP_THRESHOLD = 0.5
 DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-
-
-# ── Архитектура ──────────────────────────────────────────────────────
-
-class FactorizedEmbedding(nn.Module):
-    def __init__(self, vocab_size, embed_dim, hidden_dim, pad_token_id=0,
-                 max_position_embeddings=512, type_vocab_size=2, layer_norm_eps=1e-12):
-        super().__init__()
-        self.word_embeddings = nn.Embedding(vocab_size, embed_dim, padding_idx=pad_token_id)
-        self.position_embeddings = nn.Embedding(max_position_embeddings, embed_dim)
-        self.token_type_embeddings = nn.Embedding(type_vocab_size, embed_dim)
-        self.projection = nn.Linear(embed_dim, hidden_dim)
-        self.LayerNorm = nn.LayerNorm(hidden_dim, eps=layer_norm_eps)
-        self.dropout = nn.Dropout(0.1)
-        self.register_buffer("position_ids", torch.arange(max_position_embeddings).unsqueeze(0))
-
-    def forward(self, input_ids, token_type_ids=None):
-        seq_len = input_ids.size(1)
-        position_ids = self.position_ids[:, :seq_len]
-        if token_type_ids is None:
-            token_type_ids = torch.zeros_like(input_ids)
-        embeddings = (
-            self.word_embeddings(input_ids)
-            + self.position_embeddings(position_ids)
-            + self.token_type_embeddings(token_type_ids)
-        )
-        embeddings = self.projection(embeddings)
-        embeddings = self.LayerNorm(embeddings)
-        embeddings = self.dropout(embeddings)
-        return embeddings
-
-
-class TinyBERTStudent(nn.Module):
-    def __init__(self, vocab_size, embed_dim=128, hidden_dim=512,
-                 num_layers=6, num_heads=8, intermediate_size=2048,
-                 num_labels=3, max_position_embeddings=512, pad_token_id=0):
-        super().__init__()
-        self.hidden_dim = hidden_dim
-        self.num_labels = num_labels
-
-        self.embeddings = FactorizedEmbedding(
-            vocab_size=vocab_size, embed_dim=embed_dim,
-            hidden_dim=hidden_dim, pad_token_id=pad_token_id,
-            max_position_embeddings=max_position_embeddings,
-        )
-
-        encoder_config = BertConfig(
-            vocab_size=vocab_size, hidden_size=hidden_dim,
-            num_hidden_layers=num_layers, num_attention_heads=num_heads,
-            intermediate_size=intermediate_size,
-            max_position_embeddings=max_position_embeddings,
-            hidden_dropout_prob=0.1, attention_probs_dropout_prob=0.1,
-        )
-        self.encoder = BertEncoder(encoder_config)
-        self.pooler = BertPooler(encoder_config)
-
-        self.dropout = nn.Dropout(0.1)
-        self.classifier = nn.Linear(hidden_dim, num_labels)
-
-    def forward(self, input_ids, attention_mask=None, token_type_ids=None):
-        if attention_mask is None:
-            attention_mask = torch.ones_like(input_ids)
-        extended_mask = attention_mask.unsqueeze(1).unsqueeze(2)
-        extended_mask = (1.0 - extended_mask.float()) * -10000.0
-
-        hidden_states = self.embeddings(input_ids, token_type_ids)
-        encoder_out = self.encoder(hidden_states, attention_mask=extended_mask)
-        sequence_output = encoder_out.last_hidden_state
-        pooled_output = self.pooler(sequence_output)
-        pooled_output = self.dropout(pooled_output)
-        logits = self.classifier(pooled_output)
-        return {"logits": logits, "cls_hidden": pooled_output}
 
 
 # ── Метрики Prometheus ───────────────────────────────────────────────
@@ -139,28 +76,33 @@ request_duration = Histogram(
 # ── Инициализация ───────────────────────────────────────────────────
 
 service = "Model"
-app = FastAPI(title="TinyBERT Sentiment Classifier")
+app = FastAPI(title="Toxicity Classifier")
 
-tokenizer = BertTokenizer.from_pretrained(TEACHER_NAME)
+tokenizer = BertTokenizer.from_pretrained(BASE_MODEL)
+body = BertModel.from_pretrained(BASE_MODEL).to(DEVICE)
+body.eval()
+for p in body.parameters():
+    p.requires_grad = False
 
+# Загрузка голов
 ckpt = torch.load(CHECKPOINT, map_location=DEVICE, weights_only=False)
-model_config = ckpt["config"]
 
-model = TinyBERTStudent(
-    vocab_size=model_config["vocab_size"],
-    embed_dim=model_config["embed_dim"],
-    hidden_dim=model_config["hidden_dim"],
-    num_layers=model_config["num_layers"],
-    num_heads=model_config["num_heads"],
-    intermediate_size=model_config["intermediate_size"],
-    num_labels=model_config["num_labels"],
-    pad_token_id=tokenizer.pad_token_id,
+toxicity_head = nn.Sequential(
+    nn.Linear(ckpt["hidden_dim"], ckpt["tox_mlp_dim"]),
+    nn.ReLU(),
+    nn.Dropout(ckpt["tox_dropout"]),
+    nn.Linear(ckpt["tox_mlp_dim"], 2),
 ).to(DEVICE)
+toxicity_head.load_state_dict(ckpt["toxicity_head"])
+toxicity_head.eval()
 
-model.load_state_dict(ckpt["model_state_dict"], strict=False)
-model.eval()
+inapprop_head = nn.Linear(ckpt["hidden_dim"], 2).to(DEVICE)
+inapprop_head.load_state_dict(ckpt["inapprop_head"])
+inapprop_head.eval()
 
 print(f"Model loaded on {DEVICE}")
+print(f"Toxicity F1: {ckpt.get('toxicity_f1', 'N/A')}")
+print(f"Inapprop F1: {ckpt.get('inapprop_f1', 'N/A')}")
 
 
 # ── Хелперы ──────────────────────────────────────────────────────────
@@ -176,15 +118,34 @@ def _tokenize(text: str) -> dict[str, torch.Tensor]:
 def _classify_text(text: str) -> dict:
     enc = _tokenize(text)
     with torch.no_grad():
-        out = model(**enc)
-        probs = F.softmax(out["logits"], dim=-1).squeeze(0)
-        best = int(probs.argmax())
-        scores = {LABELS[i]: round(probs[i].item(), 4) for i in range(3)}
+        cls = body(**enc).pooler_output
+
+        tox_probs = F.softmax(toxicity_head(cls), dim=-1).squeeze(0)
+        p_toxic = tox_probs[1].item()
+
+        inapp_probs = F.softmax(inapprop_head(cls), dim=-1).squeeze(0)
+        p_inapp = inapp_probs[1].item()
+
+    is_negative = p_toxic > TOX_THRESHOLD or (p_toxic <= TOX_THRESHOLD and p_inapp > INAPP_THRESHOLD)
+
+    if is_negative:
+        confidence = max(p_toxic, p_inapp)
+        label = "negative"
+    else:
+        confidence = 1 - max(p_toxic, p_inapp)
+        label = "neutral"
+
+    neg_score = round(max(p_toxic, p_inapp), 4)
+    neut_score = round(1 - neg_score, 4)
 
     return {
-        "label": LABELS[best],
-        "confidence": scores[LABELS[best]],
-        "all_scores": scores,
+        "label": label,
+        "confidence": round(confidence, 4),
+        "all_scores": {
+            "neutral": neut_score,
+            "positive": 0.0,
+            "negative": neg_score,
+        },
     }
 
 
@@ -237,4 +198,3 @@ def health():
 @app.get("/metrics")
 def metrics():
     return Response(content=generate_latest(), media_type=CONTENT_TYPE_LATEST)
-
