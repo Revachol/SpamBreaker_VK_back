@@ -2,6 +2,7 @@ package bot
 
 import (
 	"context"
+	"fmt"
 	"strconv"
 	"strings"
 	"time"
@@ -41,6 +42,9 @@ func (b *Bot) Run(coll botmetrics.BotMetricsIface) {
 	}
 }
 
+// spamThreshold — минимальная уверенность для удаления сообщения как спам.
+const spamThreshold = 0.70
+
 // handleMessage обрабатывает одно входящее сообщение.
 func (b *Bot) handleMessage(msg *tgbotapi.Message) error {
 	chatID := msg.Chat.ID
@@ -53,8 +57,10 @@ func (b *Bot) handleMessage(msg *tgbotapi.Message) error {
 		return nil
 	}
 
-	// Для групповых чатов проверяем, что чат зарегистрирован в системе.
-	if msg.Chat.IsGroup() || msg.Chat.IsSuperGroup() {
+	isGroup := msg.Chat.IsGroup() || msg.Chat.IsSuperGroup()
+
+	// Для групповых чатов проверяем регистрацию в системе.
+	if isGroup {
 		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 		active, err := b.client.IsChatActive(ctx, strconv.FormatInt(chatID, 10))
 		cancel()
@@ -67,34 +73,59 @@ func (b *Bot) handleMessage(msg *tgbotapi.Message) error {
 		}
 	}
 
-	typing := tgbotapi.NewChatAction(chatID, tgbotapi.ChatTyping)
-	b.api.Send(typing) //nolint:errcheck
-
 	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 	defer cancel()
 
-	var errOut error
 	result, err := b.client.Check(ctx, text)
-
-	var replyText string
 	if err != nil {
-		b.logger.Error("chat=%d text=%q err=%v", chatID, text, err)
-		replyText = formatError(err)
-		errOut = expectation.ClientRequestError
-	} else {
-		b.logger.Infof("chat=%d label=%s confidence=%.2f", chatID, result.Label, result.Confidence)
-		replyText = formatVerdict(result)
+		b.logger.Errorf("chat=%d text=%q err=%v", chatID, text, err)
+		if !isGroup {
+			reply := tgbotapi.NewMessage(chatID, formatError(err))
+			reply.ParseMode = tgbotapi.ModeMarkdown
+			reply.ReplyToMessageID = msg.MessageID
+			b.api.Send(reply) //nolint:errcheck
+		}
+		return expectation.ClientRequestError
 	}
 
-	reply := tgbotapi.NewMessage(chatID, replyText)
+	b.logger.Infof("chat=%d label=%s confidence=%.2f", chatID, result.Label, result.Confidence)
+
+	if isGroup {
+		// Групповой чат: удаляем спам, чистые сообщения игнорируем.
+		if result.Label == "negative" && result.Confidence >= spamThreshold {
+			del := tgbotapi.NewDeleteMessage(chatID, msg.MessageID)
+			if _, err := b.api.Request(del); err != nil {
+				b.logger.Errorf("delete message chat=%d msg=%d: %v", chatID, msg.MessageID, err)
+			}
+			sender := "пользователь"
+			if msg.From != nil {
+				if msg.From.UserName != "" {
+					sender = "@" + msg.From.UserName
+				} else {
+					sender = msg.From.FirstName
+				}
+			}
+			notice := tgbotapi.NewMessage(chatID, fmt.Sprintf(
+				"🚫 Сообщение от %s удалено: обнаружен спам (%.0f%%)",
+				sender, result.Confidence*100,
+			))
+			b.api.Send(notice) //nolint:errcheck
+		}
+		return nil
+	}
+
+	// Личный чат: отправляем полный вердикт.
+	typing := tgbotapi.NewChatAction(chatID, tgbotapi.ChatTyping)
+	b.api.Send(typing) //nolint:errcheck
+
+	reply := tgbotapi.NewMessage(chatID, formatVerdict(result))
 	reply.ParseMode = tgbotapi.ModeMarkdown
 	reply.ReplyToMessageID = msg.MessageID
-
 	if _, err := b.api.Send(reply); err != nil {
 		b.logger.Errorf("send reply chat=%d: %v", chatID, err)
-		errOut = expectation.BotMessageAnswerError
+		return expectation.BotMessageAnswerError
 	}
-	return errOut
+	return nil
 }
 
 // handleCommand обрабатывает команды (/start, /help, /connect).
