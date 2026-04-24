@@ -8,8 +8,7 @@ WORKDIR /app
 COPY requirements.txt ./requirements.txt
 
 # Устанавливаем зависимости
-RUN pip install --no-cache-dir torch>=2.2.0 --index-url https://download.pytorch.org/whl/cpu && \
-    pip install --no-cache-dir -r requirements.txt
+RUN pip install --no-cache-dir -r requirements.txt
 
 # Копируем всё содержимое папки ml в рабочую директорию
 COPY ./classify_app.py ./classify_app.py

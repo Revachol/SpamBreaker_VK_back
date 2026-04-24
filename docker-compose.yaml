@@ -74,7 +74,6 @@ services:
       - ${MODEL_FILE}:/app/model.pt
     environment:
       MODE: ${MODE}
-      MODEL_FILE: ${MODEL_FILE}
     networks:
       - service-net
     healthcheck:

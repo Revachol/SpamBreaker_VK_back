@@ -19,11 +19,9 @@ import torch.nn.functional as F
 from fastapi import FastAPI, HTTPException, Response, Request
 from pydantic import BaseModel as PydanticBase
 from transformers import BertTokenizer, BertModel
-import transformers
 from prometheus_client import Counter, Histogram, generate_latest, CONTENT_TYPE_LATEST
 import time
 
-transformers.utils.import_utils._torch_version = "2.6.0"
 # ── Схема запроса / ответа ──────────────────────────────────────────
 
 class ClassifyRequest(PydanticBase):
