@@ -11,5 +11,6 @@ import (
 type MessageRepository interface {
 	Save(ctx context.Context, record *domain.CheckRecord) error
 	List(ctx context.Context, limit, offset int) ([]*domain.CheckRecord, error)
+	ListByApplication(ctx context.Context, applicationID string, limit, offset int) ([]*domain.CheckRecord, error)
 	GetByID(ctx context.Context, id string) (*domain.CheckRecord, error)
 }

@@ -11,7 +11,8 @@ import (
 
 // CheckRequest — запрос к Core API.
 type CheckRequest struct {
-	Text string `json:"text"`
+	Text   string `json:"text"`
+	ChatID string `json:"chat_id,omitempty"`
 }
 
 // CheckResponse — ответ от Core API.
@@ -90,8 +91,9 @@ func (c *APIClient) IsChatActive(ctx context.Context, chatID string) (bool, erro
 }
 
 // Check отправляет текст на проверку и возвращает вердикт.
-func (c *APIClient) Check(ctx context.Context, text string) (*CheckResponse, error) {
-	body, err := json.Marshal(CheckRequest{Text: text})
+// chatID передаётся, чтобы бэкенд мог привязать запись к конкретному приложению.
+func (c *APIClient) Check(ctx context.Context, text, chatID string) (*CheckResponse, error) {
+	body, err := json.Marshal(CheckRequest{Text: text, ChatID: chatID})
 	if err != nil {
 		return nil, fmt.Errorf("api client: marshal: %w", err)
 	}

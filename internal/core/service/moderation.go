@@ -32,7 +32,8 @@ func NewModerationUseCase(
 }
 
 // CheckText — основной юзкейс: валидирует текст, отправляет в ML, сохраняет результат.
-func (uc *ModerationUseCase) CheckText(ctx context.Context, text string) (*domain.CheckRecord, error) {
+// applicationID опционален: передаётся ботом, чтобы привязать запись к приложению.
+func (uc *ModerationUseCase) CheckText(ctx context.Context, text, applicationID string) (*domain.CheckRecord, error) {
 	text = strings.TrimSpace(text)
 	if text == "" {
 		return nil, fmt.Errorf("text must not be empty")
@@ -47,10 +48,11 @@ func (uc *ModerationUseCase) CheckText(ctx context.Context, text string) (*domai
 	}
 
 	record := &domain.CheckRecord{
-		ID:        uuid.NewString(),
-		Text:      text,
-		Verdict:   *verdict,
-		CreatedAt: time.Now().UTC(),
+		ID:            uuid.NewString(),
+		Text:          text,
+		Verdict:       *verdict,
+		ApplicationID: applicationID,
+		CreatedAt:     time.Now().UTC(),
 	}
 
 	// Сохраняем в репозиторий. Ошибка сохранения не блокирует ответ клиенту —
@@ -71,6 +73,17 @@ func (uc *ModerationUseCase) GetHistory(ctx context.Context, limit, offset int) 
 		offset = 0
 	}
 	return uc.repo.List(ctx, limit, offset)
+}
+
+// GetHistoryByApp возвращает историю проверок для конкретного приложения.
+func (uc *ModerationUseCase) GetHistoryByApp(ctx context.Context, applicationID string, limit, offset int) ([]*domain.CheckRecord, error) {
+	if limit <= 0 || limit > 200 {
+		limit = 50
+	}
+	if offset < 0 {
+		offset = 0
+	}
+	return uc.repo.ListByApplication(ctx, applicationID, limit, offset)
 }
 
 // GetRecord возвращает одну запись по ID.

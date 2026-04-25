@@ -28,8 +28,8 @@ func NewMessageRepository(db *pgxpool.Pool, l logger.Log) *MessageRepository {
 // Verdict.Label сохраняется в поле status, Verdict.Confidence — в toxicity_score (умноженная на 100).
 func (r *MessageRepository) Save(ctx context.Context, record *domain.CheckRecord) error {
 	query := `
-        INSERT INTO message (id, text, status, toxicity_score, created_at)
-        VALUES (COALESCE($1, gen_random_uuid()), $2, $3, $4, $5)
+        INSERT INTO message (id, text, status, toxicity_score, application_id, created_at)
+        VALUES (COALESCE($1, gen_random_uuid()), $2, $3, $4, $5, $6)
         RETURNING id
     `
 
@@ -43,11 +43,19 @@ func (r *MessageRepository) Save(ctx context.Context, record *domain.CheckRecord
 		idParam = parsedID
 	}
 
+	var appID interface{} = nil
+	if record.ApplicationID != "" {
+		parsed, err := uuid.Parse(record.ApplicationID)
+		if err == nil {
+			appID = parsed
+		}
+	}
+
 	toxicityScore := int(record.Verdict.Confidence * 100)
 
 	var generatedID uuid.UUID
 	err := r.db.QueryRow(ctx, query,
-		idParam, record.Text, record.Verdict.Label, toxicityScore, record.CreatedAt,
+		idParam, record.Text, record.Verdict.Label, toxicityScore, appID, record.CreatedAt,
 	).Scan(&generatedID)
 	if err != nil {
 		r.logger.Errorf("Message repo: save failed: %s", err)
@@ -56,6 +64,59 @@ func (r *MessageRepository) Save(ctx context.Context, record *domain.CheckRecord
 
 	record.ID = generatedID.String()
 	return nil
+}
+
+// ListByApplication возвращает историю проверок для конкретного приложения.
+func (r *MessageRepository) ListByApplication(ctx context.Context, applicationID string, limit, offset int) ([]*domain.CheckRecord, error) {
+	query := `
+        SELECT id, text, status, toxicity_score, created_at
+        FROM message
+        WHERE application_id = $1
+        ORDER BY created_at DESC
+        LIMIT $2 OFFSET $3
+    `
+
+	appID, err := uuid.Parse(applicationID)
+	if err != nil {
+		return nil, err
+	}
+
+	rows, err := r.db.Query(ctx, query, appID, limit, offset)
+	if err != nil {
+		r.logger.Errorf("Message repo: list by application failed: %s", err)
+		return nil, err
+	}
+	defer rows.Close()
+
+	var records []*domain.CheckRecord
+	for rows.Next() {
+		var id uuid.UUID
+		var text, status string
+		var toxicityScore int
+		var createdAt time.Time
+
+		if err := rows.Scan(&id, &text, &status, &toxicityScore, &createdAt); err != nil {
+			r.logger.Errorf("Message repo: scan failed: %s", err)
+			return nil, err
+		}
+
+		records = append(records, &domain.CheckRecord{
+			ID:            id.String(),
+			Text:          text,
+			ApplicationID: applicationID,
+			Verdict: domain.Verdict{
+				Label:      status,
+				Confidence: float64(toxicityScore) / 100.0,
+			},
+			CreatedAt: createdAt,
+		})
+	}
+
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+
+	return records, nil
 }
 
 // List возвращает список записей с учётом лимита и смещения.

@@ -16,10 +16,11 @@ type Verdict struct {
 
 // CheckRecord — запись в истории проверок.
 type CheckRecord struct {
-	ID        string    `json:"id"`
-	Text      string    `json:"text"`
-	Verdict   Verdict   `json:"verdict"`
-	CreatedAt time.Time `json:"created_at"`
+	ID            string    `json:"id"`
+	Text          string    `json:"text"`
+	Verdict       Verdict   `json:"verdict"`
+	ApplicationID string    `json:"application_id,omitempty"` // пусто для ручных проверок
+	CreatedAt     time.Time `json:"created_at"`
 }
 
 // Application — подключённое приложение (бот Telegram/VK, API клиент).
