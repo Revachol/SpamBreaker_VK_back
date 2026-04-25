@@ -1,11 +1,12 @@
-package bot
+package handlers
 
 import (
 	"context"
 	"strings"
 	"time"
 
-	"github.com/Revachol/SpamBreaker_VK_back/internal/clients/telegram"
+	"github.com/Revachol/SpamBreaker_VK_back/internal/bots/utils"
+	"github.com/Revachol/SpamBreaker_VK_back/internal/clients/core"
 	"github.com/Revachol/SpamBreaker_VK_back/internal/domain/expectation"
 	botmetrics "github.com/Revachol/SpamBreaker_VK_back/internal/metrics/bot"
 	"github.com/Revachol/SpamBreaker_VK_back/pkg/logger"
@@ -15,11 +16,11 @@ import (
 // Bot инкапсулирует telegram-бота и зависимости.
 type Bot struct {
 	api    *tgbotapi.BotAPI
-	client *telegram.APIClient
+	client *check_client.APIClient
 	logger logger.Log
 }
 
-func NewBot(api *tgbotapi.BotAPI, client *telegram.APIClient, l logger.Log) *Bot {
+func NewBot(api *tgbotapi.BotAPI, client *check_client.APIClient, l logger.Log) *Bot {
 	return &Bot{api: api, client: client, logger: l}
 }
 
@@ -30,13 +31,15 @@ func (b *Bot) Run(coll botmetrics.BotMetricsIface) {
 
 	updates := b.api.GetUpdatesChan(u)
 	b.logger.Infof("Bot @%s started, waiting for messages...", b.api.Self.UserName)
-	processor := botmetrics.Middleware(coll, b.handleMessage)
+	processor := botmetrics.TgMiddleware(coll, b.handleMessage)
 
 	for update := range updates {
 		if update.Message == nil {
 			continue
 		}
-		go processor(update.Message)
+		go func(msg *tgbotapi.Message) {
+			processor(msg)
+		}(update.Message)
 	}
 }
 
@@ -68,11 +71,11 @@ func (b *Bot) handleMessage(msg *tgbotapi.Message) error {
 	var replyText string
 	if err != nil {
 		b.logger.Error("chat=%d text=%q err=%v", chatID, text, err)
-		replyText = formatError(err)
+		replyText = utils.FormatError(err)
 		errOut = expectation.ClientRequestError
 	} else {
 		b.logger.Infof("chat=%d label=%s confidence=%.2f", chatID, result.Label, result.Confidence)
-		replyText = formatVerdict(result)
+		replyText = utils.FormatVerdict(result)
 	}
 
 	reply := tgbotapi.NewMessage(chatID, replyText)

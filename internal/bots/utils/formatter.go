@@ -1,9 +1,9 @@
-package bot
+package utils
 
 import (
 	"fmt"
 
-	"github.com/Revachol/SpamBreaker_VK_back/internal/clients/telegram"
+	"github.com/Revachol/SpamBreaker_VK_back/internal/clients/core"
 )
 
 // labelMeta — всё для отображения одного лейбла.
@@ -18,8 +18,8 @@ var labels = map[string]labelMeta{
 	"negative": {emoji: "🔴", title: "Негатив"},
 }
 
-// formatVerdict формирует итоговое сообщение для пользователя.
-func formatVerdict(r *telegram.CheckResponse) string {
+// FormatVerdict формирует итоговое сообщение для пользователя.
+func FormatVerdict(r *telegram.CheckResponse) string {
 	meta, ok := labels[r.Label]
 	if !ok {
 		meta = labelMeta{emoji: "❓", title: r.Label}
@@ -28,7 +28,7 @@ func formatVerdict(r *telegram.CheckResponse) string {
 	pct := int(r.Confidence * 100)
 
 	// Полоска уверенности (10 делений).
-	bar := confidenceBar(r.Confidence)
+	bar := ConfidenceBar(r.Confidence)
 
 	return fmt.Sprintf(
 		"%s *Вердикт: %s* (%d%%)\n\n"+
@@ -47,8 +47,8 @@ func formatVerdict(r *telegram.CheckResponse) string {
 	)
 }
 
-// confidenceBar рисует ASCII-полоску уверенности, например: [████████░░] 80%
-func confidenceBar(confidence float64) string {
+// ConfidenceBar рисует ASCII-полоску уверенности, например: [████████░░] 80%
+func ConfidenceBar(confidence float64) string {
 	const total = 10
 	filled := int(confidence * float64(total))
 	bar := ""
@@ -62,7 +62,7 @@ func confidenceBar(confidence float64) string {
 	return fmt.Sprintf("[%s] %d%%", bar, int(confidence*100))
 }
 
-// formatError — сообщение при ошибке.
-func formatError(err error) string {
+// FormatError — сообщение при ошибке.
+func FormatError(err error) string {
 	return fmt.Sprintf("⚠️ Не удалось проверить сообщение.\n\n`%v`", err)
 }
