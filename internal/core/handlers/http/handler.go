@@ -65,8 +65,14 @@ func (h *Handler) Check(c *gin.Context) {
 	// Если бот передал chat_id — находим приложение, чтобы привязать запись.
 	applicationID := ""
 	if req.ChatID != "" {
-		if app, err := h.telegramBot.GetByChatID(c.Request.Context(), req.ChatID); err == nil && app != nil {
+		app, err := h.telegramBot.GetByChatID(c.Request.Context(), req.ChatID)
+		if err != nil {
+			h.logger.Warnf("Check: GetByChatID(%q) error: %v", req.ChatID, err)
+		} else if app != nil {
 			applicationID = app.ID
+			h.logger.Infof("Check: chat_id=%q -> application_id=%s", req.ChatID, applicationID)
+		} else {
+			h.logger.Warnf("Check: chat_id=%q -> no matching application found", req.ChatID)
 		}
 	}
 
