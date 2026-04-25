@@ -49,7 +49,7 @@ func Run() {
 	dbg := os.Getenv("BOT_DEBUG") == "true"
 	botAPI, err := botgolang.NewBot(cfg.Vk.Token, botgolang.BotDebug(dbg))
 	if err != nil {
-		log.Fatal("Telegram Bot could not be created with error: %s", err.Error())
+		log.Fatal("Vk Bot could not be created with error: %s", err.Error())
 	}
 	log.Infof("authorized as @%s", botAPI.Info.Nick)
 

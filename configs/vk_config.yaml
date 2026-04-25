@@ -1,5 +1,5 @@
 app:
-  name: TGBot
+  name: VKBot
   host: 0.0.0.0
   port: 8080
   prefix: /api/v1
@@ -7,9 +7,6 @@ app:
 
   logger:
     level: TRACE
-
-  telegram:
-    token: TELEGRAM_TOKEN
 
   vk:
     token: VK_TOKEN
