@@ -76,7 +76,7 @@ func (b *Bot) handleMessage(msg *tgbotapi.Message) error {
 	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 	defer cancel()
 
-	result, err := b.client.Check(ctx, text)
+	result, err := b.client.Check(ctx, text, strconv.FormatInt(chatID, 10))
 	if err != nil {
 		b.logger.Errorf("chat=%d text=%q err=%v", chatID, text, err)
 		if !isGroup {

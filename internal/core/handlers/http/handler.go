@@ -23,7 +23,8 @@ func NewHandler(moderation *service.ModerationUseCase, telegramBot *service.Tele
 // ---------- Request / Response DTOs ----------
 
 type checkRequest struct {
-	Text string `json:"text" binding:"required"`
+	Text   string `json:"text" binding:"required"`
+	ChatID string `json:"chat_id,omitempty"` // передаётся ботом для привязки к приложению
 }
 
 type checkResponse struct {
@@ -61,9 +62,16 @@ func (h *Handler) Check(c *gin.Context) {
 		return
 	}
 
-	record, err := h.moderation.CheckText(c.Request.Context(), req.Text)
+	// Если бот передал chat_id — находим приложение, чтобы привязать запись.
+	applicationID := ""
+	if req.ChatID != "" {
+		if app, err := h.telegramBot.GetByChatID(c.Request.Context(), req.ChatID); err == nil && app != nil {
+			applicationID = app.ID
+		}
+	}
+
+	record, err := h.moderation.CheckText(c.Request.Context(), req.Text, applicationID)
 	if err != nil {
-		// Разделяем ошибки валидации и ошибки upstream-сервиса.
 		status := http.StatusBadRequest
 		if isUpstreamError(err) {
 			status = http.StatusBadGateway
@@ -81,6 +89,56 @@ func (h *Handler) Check(c *gin.Context) {
 		AllScores:  record.Verdict.AllScores,
 		CreatedAt:  record.CreatedAt.Format("2006-01-02T15:04:05Z"),
 	})
+}
+
+// GetBotHistory возвращает историю сообщений, обработанных Telegram-ботом пользователя.
+func (h *Handler) GetBotHistory(c *gin.Context) {
+	userID, exists := c.Get("user_id")
+	if !exists {
+		c.JSON(http.StatusUnauthorized, errorResponse{Error: "not authenticated"})
+		return
+	}
+	limit := queryInt(c, "limit", 50)
+	offset := queryInt(c, "offset", 0)
+
+	apps, err := h.telegramBot.ListAccessibleBots(c.Request.Context(), userID.(string))
+	if err != nil {
+		h.logger.Errorf("GetBotHistory: list bots: %s", err)
+		c.JSON(http.StatusInternalServerError, errorResponse{Error: "failed to list bots"})
+		return
+	}
+
+	var appID string
+	for _, app := range apps {
+		if app.Platform == "telegram" && app.Status == "active" {
+			appID = app.ID
+			break
+		}
+	}
+	if appID == "" {
+		c.JSON(http.StatusNotFound, errorResponse{Error: "no active telegram bot"})
+		return
+	}
+
+	records, err := h.moderation.GetHistoryByApp(c.Request.Context(), appID, limit, offset)
+	if err != nil {
+		h.logger.Errorf("GetBotHistory: get history: %s", err)
+		c.JSON(http.StatusInternalServerError, errorResponse{Error: err.Error()})
+		return
+	}
+
+	resp := make([]checkResponse, 0, len(records))
+	for _, r := range records {
+		resp = append(resp, checkResponse{
+			ID:         r.ID,
+			Text:       r.Text,
+			Label:      r.Verdict.Label,
+			Confidence: r.Verdict.Confidence,
+			AllScores:  r.Verdict.AllScores,
+			CreatedAt:  r.CreatedAt.Format("2006-01-02T15:04:05Z"),
+		})
+	}
+	c.JSON(http.StatusOK, resp)
 }
 
 // GetHistory godoc

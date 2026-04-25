@@ -243,6 +243,11 @@ func (uc *TelegramBotUseCase) GetAdmins(ctx context.Context, appID string) ([]*d
 	return admins, nil
 }
 
+// GetByChatID возвращает приложение по внешнему ID чата (Telegram chat ID).
+func (uc *TelegramBotUseCase) GetByChatID(ctx context.Context, chatID string) (*domain.Application, error) {
+	return uc.applicationRepo.GetByExternalIDAndPlatform(ctx, chatID, "telegram")
+}
+
 // IsChatActive проверяет, зарегистрирован ли чат в системе.
 func (uc *TelegramBotUseCase) IsChatActive(ctx context.Context, chatID string) (bool, error) {
 	app, err := uc.applicationRepo.GetByExternalIDAndPlatform(ctx, chatID, "telegram")
