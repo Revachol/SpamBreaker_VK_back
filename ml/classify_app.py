@@ -16,9 +16,10 @@ FastAPI-сервис для Toxicity + Inappropriateness классификац�
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from fastapi import FastAPI, HTTPException, Response, Request
+from fastapi import FastAPI, HTTPException, Request, Response
 from pydantic import BaseModel as PydanticBase
 from transformers import BertTokenizer, BertModel
+from spam_filter import SpamFilter
 from prometheus_client import Counter, Histogram, generate_latest, CONTENT_TYPE_LATEST
 import time
 
@@ -102,6 +103,8 @@ print(f"Model loaded on {DEVICE}")
 print(f"Toxicity F1: {ckpt.get('toxicity_f1', 'N/A')}")
 print(f"Inapprop F1: {ckpt.get('inapprop_f1', 'N/A')}")
 
+spam = SpamFilter()
+
 
 # ── Хелперы ──────────────────────────────────────────────────────────
 
@@ -114,6 +117,20 @@ def _tokenize(text: str) -> dict[str, torch.Tensor]:
 
 
 def _classify_text(text: str) -> dict:
+    # Спам-фильтр (до BERT)
+    spam_result = spam.check(text)
+    if spam_result["is_spam"]:
+        return {
+            "label": "negative",
+            "confidence": round(spam_result["confidence"], 4),
+            "all_scores": {
+                "neutral": round(1 - spam_result["confidence"], 4),
+                "positive": 0.0,
+                "negative": round(spam_result["confidence"], 4),
+            },
+        }
+
+    # Модель
     enc = _tokenize(text)
     with torch.no_grad():
         cls = body(**enc).pooler_output
