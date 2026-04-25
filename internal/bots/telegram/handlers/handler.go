@@ -83,7 +83,7 @@ func (b *Bot) handleMessage(msg *tgbotapi.Message) error {
 	if err != nil {
 		b.logger.Errorf("chat=%d text=%q err=%v", chatID, text, err)
 		if !isGroup {
-			reply := tgbotapi.NewMessage(chatID, formatError(err))
+			reply := tgbotapi.NewMessage(chatID, utils.FormatError(err))
 			reply.ParseMode = tgbotapi.ModeMarkdown
 			reply.ReplyToMessageID = msg.MessageID
 			b.api.Send(reply) //nolint:errcheck
@@ -121,7 +121,7 @@ func (b *Bot) handleMessage(msg *tgbotapi.Message) error {
 	typing := tgbotapi.NewChatAction(chatID, tgbotapi.ChatTyping)
 	b.api.Send(typing) //nolint:errcheck
 
-	reply := tgbotapi.NewMessage(chatID, formatVerdict(result))
+	reply := tgbotapi.NewMessage(chatID, utils.FormatVerdict(result))
 	reply.ParseMode = tgbotapi.ModeMarkdown
 	reply.ReplyToMessageID = msg.MessageID
 	if _, err := b.api.Send(reply); err != nil {

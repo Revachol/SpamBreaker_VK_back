@@ -66,11 +66,8 @@ func VkMiddleware(
 ) func(msg *botgolang.Message) {
 	return func(msg *botgolang.Message) {
 		start := time.Now()
-		// Проверка на команды
-		command := "text"
-		if strings.HasPrefix(msg.Text, "/") {
-			command = "command"
-		}
+		command := extractVkCommand(msg)
+
 		err := next(msg)
 
 		status := "success"
@@ -81,5 +78,26 @@ func VkMiddleware(
 		duration := time.Since(start).Seconds()
 		collector.IncBotRequest(command, status)
 		collector.ObserveBotDuration(command, status, duration)
+	}
+}
+
+// extractCommand извлекает команду или тип обновления.
+func extractVkCommand(msg *botgolang.Message) string {
+	// Проверка на команды
+	if strings.HasPrefix(msg.Text, "/") {
+		return msg.Text
+	}
+	// тип сообщения (текст, фото, документ и т.д.)
+	switch {
+	case msg.ContentType == botgolang.Text:
+		return "text"
+	case msg.ContentType == botgolang.OtherFile:
+		return "file"
+	case msg.ContentType == botgolang.Deeplink:
+		return "deeplink"
+	case msg.ContentType == botgolang.Voice:
+		return "voice"
+	default:
+		return "other"
 	}
 }
