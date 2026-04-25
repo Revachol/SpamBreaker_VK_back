@@ -61,7 +61,7 @@ jobs:
 
       - name: Prepare images
         run: |
-          APPS=${cat manifest}
+          APPS=$(cat manifest)
           TAG="$(cat VERSION)"
           echo "$BUILD_ENV" > .env
           sed -i "s/^MODE=dev$/MODE=$MODE/" .env
@@ -73,7 +73,7 @@ jobs:
         env:
           APP_DIR: /home/ubuntu/spambreaker
         run: |
-          APPS=${cat manifest}
+          APPS=$(cat manifest)
           ssh -o StrictHostKeyChecking=no -i ~/.ssh/deploy_key $SERVER_CONFIG \
             "mkdir -p $APP_DIR/$MODE/infra"
           
