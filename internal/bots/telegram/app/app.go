@@ -5,9 +5,9 @@ import (
 	"os"
 
 	"github.com/Revachol/SpamBreaker_VK_back/internal/bots/telegram/config"
-	"github.com/Revachol/SpamBreaker_VK_back/internal/bots/telegram/handlers/bot"
-	httphandler "github.com/Revachol/SpamBreaker_VK_back/internal/bots/telegram/handlers/http"
-	"github.com/Revachol/SpamBreaker_VK_back/internal/clients/telegram"
+	"github.com/Revachol/SpamBreaker_VK_back/internal/bots/telegram/handlers"
+	httphandler "github.com/Revachol/SpamBreaker_VK_back/internal/bots/utils"
+	"github.com/Revachol/SpamBreaker_VK_back/internal/clients/core"
 	botmetrics "github.com/Revachol/SpamBreaker_VK_back/internal/metrics/bot"
 	"github.com/Revachol/SpamBreaker_VK_back/pkg/logger"
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
@@ -55,7 +55,7 @@ func Run() {
 
 	// Общий клиент к Core API.
 	coreAddr := fmt.Sprintf("http://%s:%s", cfg.Core.Host, cfg.Core.Port)
-	apiClient := telegram.NewAPIClient(coreAddr)
+	apiClient := check_client.NewAPIClient(coreAddr)
 
 	router := httphandler.NewRouter(app.registry)
 	coreAddr = fmt.Sprintf("%s:%d", cfg.Host, cfg.Metrics.Port)
@@ -66,6 +66,6 @@ func Run() {
 	}()
 
 	// Старт бота.
-	tgBot := bot.NewBot(botAPI, apiClient, app.logger)
+	tgBot := handlers.NewBot(botAPI, apiClient, app.logger)
 	tgBot.Run(coll)
 }
