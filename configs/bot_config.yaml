@@ -11,6 +11,9 @@ app:
   telegram:
     token: TELEGRAM_TOKEN
 
+  vk:
+    token: VK_TOKEN
+
   metrics:
     port: 8081
 
