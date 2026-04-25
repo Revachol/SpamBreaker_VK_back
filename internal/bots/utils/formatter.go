@@ -19,7 +19,7 @@ var labels = map[string]labelMeta{
 }
 
 // FormatVerdict формирует итоговое сообщение для пользователя.
-func FormatVerdict(r *telegram.CheckResponse) string {
+func FormatVerdict(r *check_client.CheckResponse) string {
 	meta, ok := labels[r.Label]
 	if !ok {
 		meta = labelMeta{emoji: "❓", title: r.Label}

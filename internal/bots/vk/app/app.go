@@ -2,7 +2,6 @@ package app
 
 import (
 	"fmt"
-	"os"
 
 	httphandler "github.com/Revachol/SpamBreaker_VK_back/internal/bots/utils"
 	"github.com/Revachol/SpamBreaker_VK_back/internal/bots/vk/config"
@@ -10,8 +9,9 @@ import (
 	check_client "github.com/Revachol/SpamBreaker_VK_back/internal/clients/core"
 	botmetrics "github.com/Revachol/SpamBreaker_VK_back/internal/metrics/bot"
 	"github.com/Revachol/SpamBreaker_VK_back/pkg/logger"
+	"github.com/SevereCloud/vksdk/v2/api"
+	"github.com/SevereCloud/vksdk/v2/longpoll-bot"
 	"github.com/joho/godotenv"
-	botgolang "github.com/mail-ru-im/bot-golang"
 	"github.com/prometheus/client_golang/prometheus"
 )
 
@@ -46,12 +46,21 @@ func Run() {
 	}
 
 	// Инициализация VK Teams бота
-	dbg := os.Getenv("BOT_DEBUG") == "true"
-	botAPI, err := botgolang.NewBot(cfg.Vk.Token, botgolang.BotDebug(dbg))
+	//dbg := os.Getenv("BOT_DEBUG") == "true"
+	vk := api.NewVK(cfg.Vk.Token)
+
+	// get information about the group
+	group, err := vk.GroupsGetByID(nil)
 	if err != nil {
-		log.Fatal("Vk Bot could not be created with error: %s", err.Error())
+		log.Fatal(err)
 	}
-	log.Infof("authorized as @%s", botAPI.Info.Nick)
+
+	// Initializing Long Poll
+	lp, err := longpoll.NewLongPoll(vk, group[0].ID)
+	if err != nil {
+		log.Fatalf("Vk Bot could not be created with error: %s", err.Error())
+	}
+	log.Infof("authorized as @%s", lp.Server)
 
 	coreAddr := fmt.Sprintf("http://%s:%s", cfg.Core.Host, cfg.Core.Port)
 	apiClient := check_client.NewAPIClient(coreAddr)
@@ -65,6 +74,6 @@ func Run() {
 	}()
 
 	// Старт бота.
-	vkBot := handlers.NewBot(botAPI, apiClient, app.logger)
+	vkBot := handlers.NewBot(vk, lp, apiClient, app.logger)
 	vkBot.Run(coll)
 }

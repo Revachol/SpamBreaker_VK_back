@@ -3,6 +3,7 @@ package handlers
 import (
 	"context"
 	"fmt"
+	"strconv"
 	"strings"
 	"time"
 
@@ -11,176 +12,155 @@ import (
 	"github.com/Revachol/SpamBreaker_VK_back/internal/domain/expectation"
 	botmetrics "github.com/Revachol/SpamBreaker_VK_back/internal/metrics/bot"
 	"github.com/Revachol/SpamBreaker_VK_back/pkg/logger"
-	"github.com/mail-ru-im/bot-golang"
+	"github.com/SevereCloud/vksdk/v2/api"
+	"github.com/SevereCloud/vksdk/v2/api/params"
+	"github.com/SevereCloud/vksdk/v2/events"
+	"github.com/SevereCloud/vksdk/v2/longpoll-bot"
+	"github.com/SevereCloud/vksdk/v2/object"
 )
 
-// spamThreshold — минимальная уверенность для удаления сообщения как спам.
 const spamThreshold = 0.70
 
-// VKBot инкапсулирует VK Teams бота и зависимости.
 type VKBot struct {
-	api    *botgolang.Bot
+	vk     *api.VK
+	lp     *longpoll.LongPoll
 	client *check_client.APIClient
 	logger logger.Log
 }
 
-func NewBot(bot *botgolang.Bot, client *check_client.APIClient, l logger.Log) *VKBot {
+func NewBot(vk *api.VK, lp *longpoll.LongPoll, client *check_client.APIClient, l logger.Log) *VKBot {
+
 	return &VKBot{
-		api:    bot,
+		vk:     vk,
+		lp:     lp,
 		client: client,
 		logger: l,
 	}
 }
 
 func (b *VKBot) Run(coll botmetrics.BotMetricsIface) {
-	ctx := context.Background()
-	updates := b.api.GetUpdatesChannel(ctx)
+	b.logger.Infof("VK Bot started...")
 
-	b.logger.Infof("VK Teams Bot @%s started", b.api.Info.Nick)
-
+	// Middleware для метрик
 	processor := botmetrics.VkMiddleware(coll, b.handleMessage)
 
-	for event := range updates {
-		if event.Type != botgolang.NEW_MESSAGE && event.Type != botgolang.EDITED_MESSAGE {
-			continue
-		}
+	// Обработка новых сообщений
+	b.lp.MessageNew(func(ctx context.Context, obj events.MessageNewObject) {
+		msg := obj.Message
+		processor(&msg)
+	})
 
-		msg := event.Payload.Message()
-		if msg == nil {
-			continue
-		}
-
-		go func(m *botgolang.Message) {
-			processor(m)
-		}(msg)
+	// Запуск прослушивания
+	if err := b.lp.Run(); err != nil {
+		b.logger.Fatalf("Long Poll run error: %v", err)
 	}
 }
 
-func (b *VKBot) handleMessage(msg *botgolang.Message) error {
-	chatID := msg.Chat.ID
+func (b *VKBot) handleMessage(msg *object.MessagesMessage) error {
+	b.logger.Debugf("In: %v", msg)
+	// В ВК PeerID > 2000000000 означает групповой чат
+	isGroup := msg.PeerID > 2000000000
 	text := strings.TrimSpace(msg.Text)
-
-	// Проверка на команды
-	if strings.HasPrefix(text, "/") {
-		return b.handleCommand(msg)
-	}
+	peerIDStr := strconv.Itoa(msg.PeerID)
 
 	if text == "" {
 		return nil
 	}
 
-	// В VK Teams типами групповых чатов являются "group" и "channel"
-	isGroup := msg.Chat.Type == "group" || msg.Chat.Type == "channel"
+	// Обработка команд
+	if strings.HasPrefix(text, "/") {
+		return b.handleCommand(msg)
+	}
 
-	// Для групповых чатов проверяем регистрацию в системе.
+	// Проверка активации для групп
 	if isGroup {
 		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-		active, err := b.client.IsChatActive(ctx, chatID) // chatID в VK уже string
+		active, err := b.client.IsChatActive(ctx, peerIDStr)
 		cancel()
-		if err != nil {
-			b.logger.Warnf("failed to check chat %s registration: %v", chatID, err)
-			return nil
-		}
-		if !active {
+		if err != nil || !active {
 			return nil
 		}
 	}
 
+	// Анализ текста через ML Core
 	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 	defer cancel()
 
 	result, err := b.client.Check(ctx, text)
 	if err != nil {
-		b.logger.Errorf("chat=%s text=%q err=%v", chatID, text, err)
 		if !isGroup {
-			msg.Reply(utils.FormatError(err))
+			b.sendMessage(msg.PeerID, utils.FormatError(err), msg.ConversationMessageID)
 		}
 		return expectation.ClientRequestError
 	}
 
-	b.logger.Infof("chat=%s label=%s confidence=%.2f", chatID, result.Label, result.Confidence)
-
 	if isGroup {
-		// Групповой чат: удаляем спам (negative), чистые сообщения игнорируем.
 		if result.Label == "negative" && result.Confidence >= spamThreshold {
-			if err := msg.Delete(); err != nil {
-				b.logger.Errorf("delete message chat=%s msg=%s: %v", chatID, msg.Chat.Nick, err)
+			// Удаление сообщения в ВК
+			_, err := b.vk.MessagesDelete(api.Params{
+				"peer_id":        msg.PeerID,
+				"cmids":          msg.ConversationMessageID,
+				"delete_for_all": 1,
+				"group_id":       b.lp.GroupID,
+			})
+			if err != nil {
+				b.logger.Errorf("failed to delete msg: %v", err)
 			}
 
-			sender := "пользователь"
-			if msg.Chat.Nick != "" {
-				sender = "@" + msg.Chat.Nick
-			} else if msg.Chat.FirstName != "" {
-				sender = msg.Chat.FirstName
-			}
-
-			notice := fmt.Sprintf("🚫 Сообщение от %s удалено: обнаружен спам (%.0f%%)",
-				sender, result.Confidence*100)
-
-			// Отправляем уведомление в чат
-			b.api.NewTextMessage(chatID, notice).Send()
+			notice := fmt.Sprintf("🚫 Сообщение удалено: обнаружен спам (%.0f%%)", result.Confidence*100)
+			b.sendMessage(msg.PeerID, notice, 0)
 		}
 		return nil
 	}
 
-	// Личный чат: отправляем вердикт (цитированием)
-	if err := msg.Reply(utils.FormatVerdict(result)); err != nil {
-		b.logger.Errorf("send reply chat=%s: %v", chatID, err)
-		return expectation.BotMessageAnswerError
-	}
-
+	// Ответ в личку
+	b.sendMessage(msg.PeerID, utils.FormatVerdict(result), msg.ConversationMessageID)
 	return nil
 }
 
-func (b *VKBot) handleCommand(msg *botgolang.Message) error {
+func (b *VKBot) handleCommand(msg *object.MessagesMessage) error {
 	parts := strings.Fields(msg.Text)
-	command := strings.ToLower(parts[0])
+	cmd := strings.ToLower(parts[0])
 
-	switch command {
-	case "/connect":
-		return b.handleConnect(msg, parts)
-
+	var response string
+	switch cmd {
 	case "/start":
-		text := "👋 Привет! Я SpamBreaker — бот для модерации групп VK Teams.\n\n" +
-			"Чтобы подключить меня к группе, зарегистрируйтесь на сайте и следуйте инструкции.\n\n" +
-			"*Команды:*\n" +
-			"/connect TOKEN — привязать бота к группе\n" +
-			"/help — справка"
-		msg.Reply(text)
-
-	case "/help":
-		text := "ℹ️ *Как подключить бота к группе:*\n\n" +
-			"1. Зарегистрируйтесь на сайте SpamBreaker\n" +
-			"2. Перейдите в раздел VK Teams и скопируйте токен\n" +
-			"3. Добавьте бота в группу как администратора\n" +
-			"4. Отправьте в группе команду: `/connect ВАШ_ТОКЕН`"
-		msg.Reply(text)
-
+		response = "👋 Привет! Я SpamBreaker для ВКонтакте.\nДобавьте меня в беседу для защиты от спама."
+	case "/connect":
+		if len(parts) < 2 {
+			response = "❌ Используйте: /connect TOKEN"
+		} else {
+			ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+			defer cancel()
+			err := b.client.ActivateChat(ctx, parts[1], strconv.Itoa(msg.PeerID))
+			if err != nil {
+				response = "❌ Ошибка подключения."
+			} else {
+				response = "✅ Чат успешно подключен к SpamBreaker!"
+			}
+		}
 	default:
-		msg.Reply("❓ Неизвестная команда. Напиши /help для справки.")
+		response = "❓ Неизвестная команда."
 	}
 
+	b.sendMessage(msg.PeerID, response, msg.ConversationMessageID)
 	return nil
 }
 
-func (b *VKBot) handleConnect(msg *botgolang.Message, parts []string) error {
-	if len(parts) < 2 {
-		msg.Reply("❌ Укажите токен: `/connect ВАШ_ТОКЕН`")
-		return nil
+// Вспомогательный метод для отправки сообщений
+func (b *VKBot) sendMessage(peerID int, text string, replyTo int) {
+	p := params.NewMessagesSendBuilder()
+	p.PeerID(peerID)
+	p.RandomID(0) // 0 позволяет SDK сгенерировать случайное число
+	p.Message(text)
+
+	if replyTo != 0 {
+		// В ВК для ответа используется conversation_message_ids
+		p.Forward(fmt.Sprintf(`{"is_reply":1,"peer_id":%d,"conversation_message_ids":[%d]}`, peerID, replyTo))
 	}
 
-	token := parts[1]
-	chatID := msg.Chat.ID
-
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-	defer cancel()
-
-	if err := b.client.ActivateChat(ctx, token, chatID); err != nil {
-		b.logger.Errorf("failed to activate chat %s with token: %v", chatID, err)
-		msg.Reply("❌ Не удалось подключить бота. Проверьте токен и попробуйте снова.")
-		return err
+	_, err := b.vk.MessagesSend(p.Params)
+	if err != nil {
+		b.logger.Errorf("failed to send message to %d: %v", peerID, err)
 	}
-
-	msg.Reply("✅ *Бот SpamBreaker успешно подключён!*\n\nМодерация сообщений активирована.")
-	return nil
 }

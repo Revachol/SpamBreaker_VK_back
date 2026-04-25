@@ -4,8 +4,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/SevereCloud/vksdk/v2/object"
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
-	botgolang "github.com/mail-ru-im/bot-golang"
 )
 
 // TgMiddleware оборачивает функцию обработчика обновлений, собирая метрики.
@@ -62,9 +62,9 @@ func extractTgCommand(msg *tgbotapi.Message) string {
 // Принимает имя бота, коллектор и функцию обработки обновлений (обычно бот.Request).
 func VkMiddleware(
 	collector BotMetricsIface,
-	next func(message *botgolang.Message) error,
-) func(msg *botgolang.Message) {
-	return func(msg *botgolang.Message) {
+	next func(message *object.MessagesMessage) error,
+) func(msg *object.MessagesMessage) {
+	return func(msg *object.MessagesMessage) {
 		start := time.Now()
 		command := extractVkCommand(msg)
 
@@ -82,22 +82,36 @@ func VkMiddleware(
 }
 
 // extractCommand извлекает команду или тип обновления.
-func extractVkCommand(msg *botgolang.Message) string {
-	// Проверка на команды
+func extractVkCommand(msg *object.MessagesMessage) string {
+	// 1. Проверка на текстовые команды
 	if strings.HasPrefix(msg.Text, "/") {
-		return msg.Text
+		// Возвращаем первое слово (саму команду), например "/start"
+		return strings.Fields(msg.Text)[0]
 	}
-	// тип сообщения (текст, фото, документ и т.д.)
-	switch {
-	case msg.ContentType == botgolang.Text:
+
+	// 2. Если есть вложения, определяем тип по первому вложению
+	if len(msg.Attachments) > 0 {
+		attType := msg.Attachments[0].Type
+		switch attType {
+		case "audio_message": // В ВК голосовые сообщения — это audio_message
+			return "voice"
+		case "doc":
+			return "file"
+		case "photo":
+			return "photo"
+		case "video":
+			return "video"
+		case "audio":
+			return "audio"
+		default:
+			return "attachment"
+		}
+	}
+
+	// 3. Если вложений нет, но есть текст
+	if msg.Text != "" {
 		return "text"
-	case msg.ContentType == botgolang.OtherFile:
-		return "file"
-	case msg.ContentType == botgolang.Deeplink:
-		return "deeplink"
-	case msg.ContentType == botgolang.Voice:
-		return "voice"
-	default:
-		return "other"
 	}
+
+	return "other"
 }
