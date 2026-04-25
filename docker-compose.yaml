@@ -35,19 +35,48 @@ services:
       retries: 5
       start_period: 5s
 
-  bot_service:
+  tg_service:
     build:
       context: .
-      dockerfile: infra/dockerfiles/bot.Dockerfile
-    image: bot-${MODE}:${TAG}
-    container_name: bot_${MODE}
+      dockerfile: infra/dockerfiles/tg.Dockerfile
+    image: tg-${MODE}:${TAG}
+    container_name: tg_${MODE}
     depends_on:
       core_service:
         condition: service_healthy
     volumes:
-      - ./configs/bot_config.yaml:/app/config.yaml
+      - ./configs/tg_config.yaml:/app/config.yaml
     ports:
-      - "${BOT_EXPORT}:8080"
+      - "${TG_EXPORT}:8080"
+    environment:
+      MODE: ${MODE}
+      CONFIG_PATH: ./config.yaml
+      TELEGRAM_TOKEN: ${TELEGRAM_TOKEN}
+      CORE_HOST: ${CORE_HOST}
+      CORE_PORT: ${CORE_PORT}
+    networks:
+      - service-net
+    healthcheck:
+      disable: true
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:8081/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+      start_period: 5s
+
+  vk_service:
+    build:
+      context: .
+      dockerfile: infra/dockerfiles/tg.Dockerfile
+    image: vk-${MODE}:${TAG}
+    container_name: vk_${MODE}
+    depends_on:
+      core_service:
+        condition: service_healthy
+    volumes:
+      - ./configs/vk_config.yaml:/app/config.yaml
+    ports:
+      - "${VK_EXPORT}:8080"
     environment:
       MODE: ${MODE}
       CONFIG_PATH: ./config.yaml

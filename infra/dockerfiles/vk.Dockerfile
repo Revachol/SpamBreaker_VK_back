@@ -11,7 +11,7 @@ RUN go mod download
 COPY . .
 
 # Собираем статический бинарник
-RUN CGO_ENABLED=0 GOOS=linux go build -a -installsuffix cgo -o ./build/tg_bot ./cmd/telegram/
+RUN CGO_ENABLED=0 GOOS=linux go build -a -installsuffix cgo -o ./build/vk_bot ./cmd/vk/
 
 # ---- Финальный образ ----
 FROM alpine:latest
@@ -22,10 +22,10 @@ RUN apk --no-cache add ca-certificates tzdata
 WORKDIR /app
 
 # Копируем скомпилированный бинарник из предыдущего этапа
-COPY --from=builder /app/build/tg_bot .
+COPY --from=builder /app/build/vk_bot .
 
 # Порт, который слушает приложение (измените при необходимости)
-EXPOSE 8081
+EXPOSE 8080
 
 # Запускаем
-CMD ["./tg_bot"]
+CMD ["./vk_bot"]
