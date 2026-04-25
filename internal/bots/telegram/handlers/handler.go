@@ -1,4 +1,4 @@
-package bot
+package handlers
 
 import (
 	"context"
@@ -7,7 +7,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/Revachol/SpamBreaker_VK_back/internal/clients/telegram"
+	"github.com/Revachol/SpamBreaker_VK_back/internal/bots/utils"
+	"github.com/Revachol/SpamBreaker_VK_back/internal/clients/core"
 	"github.com/Revachol/SpamBreaker_VK_back/internal/domain/expectation"
 	botmetrics "github.com/Revachol/SpamBreaker_VK_back/internal/metrics/bot"
 	"github.com/Revachol/SpamBreaker_VK_back/pkg/logger"
@@ -17,11 +18,11 @@ import (
 // Bot инкапсулирует telegram-бота и зависимости.
 type Bot struct {
 	api    *tgbotapi.BotAPI
-	client *telegram.APIClient
+	client *check_client.APIClient
 	logger logger.Log
 }
 
-func NewBot(api *tgbotapi.BotAPI, client *telegram.APIClient, l logger.Log) *Bot {
+func NewBot(api *tgbotapi.BotAPI, client *check_client.APIClient, l logger.Log) *Bot {
 	return &Bot{api: api, client: client, logger: l}
 }
 
@@ -32,13 +33,15 @@ func (b *Bot) Run(coll botmetrics.BotMetricsIface) {
 
 	updates := b.api.GetUpdatesChan(u)
 	b.logger.Infof("Bot @%s started, waiting for messages...", b.api.Self.UserName)
-	processor := botmetrics.Middleware(coll, b.handleMessage)
+	processor := botmetrics.TgMiddleware(coll, b.handleMessage)
 
 	for update := range updates {
 		if update.Message == nil {
 			continue
 		}
-		go processor(update.Message)
+		go func(msg *tgbotapi.Message) {
+			processor(msg)
+		}(update.Message)
 	}
 }
 
@@ -80,7 +83,7 @@ func (b *Bot) handleMessage(msg *tgbotapi.Message) error {
 	if err != nil {
 		b.logger.Errorf("chat=%d text=%q err=%v", chatID, text, err)
 		if !isGroup {
-			reply := tgbotapi.NewMessage(chatID, formatError(err))
+			reply := tgbotapi.NewMessage(chatID, utils.FormatError(err))
 			reply.ParseMode = tgbotapi.ModeMarkdown
 			reply.ReplyToMessageID = msg.MessageID
 			b.api.Send(reply) //nolint:errcheck
@@ -118,7 +121,7 @@ func (b *Bot) handleMessage(msg *tgbotapi.Message) error {
 	typing := tgbotapi.NewChatAction(chatID, tgbotapi.ChatTyping)
 	b.api.Send(typing) //nolint:errcheck
 
-	reply := tgbotapi.NewMessage(chatID, formatVerdict(result))
+	reply := tgbotapi.NewMessage(chatID, utils.FormatVerdict(result))
 	reply.ParseMode = tgbotapi.ModeMarkdown
 	reply.ReplyToMessageID = msg.MessageID
 	if _, err := b.api.Send(reply); err != nil {

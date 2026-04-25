@@ -61,23 +61,26 @@ jobs:
 
       - name: Prepare images
         run: |
+          APPS=$(cat manifest)
           TAG="$(cat VERSION)"
           echo "$BUILD_ENV" > .env
           sed -i "s/^MODE=dev$/MODE=$MODE/" .env
           sed -i "s/^TAG=.*$/TAG=$TAG/" .env
-          docker compose build core_service bot_service model_service
-          docker save -o all_images.tar model-$MODE:$TAG bot-$MODE:$TAG core-$MODE:$TAG
+          docker compose build $APPS
+          docker save -o all_images.tar $(cat manifest | sed "s/_service/-$MODE:$TAG/g")
 
       - name: Deploy
         env:
           APP_DIR: /home/ubuntu/spambreaker
         run: |
-          APPS="core_service bot_service model_service"
+          APPS=$(cat manifest)
           ssh -o StrictHostKeyChecking=no -i ~/.ssh/deploy_key $SERVER_CONFIG \
             "mkdir -p $APP_DIR/$MODE/infra"
           
           ssh -o StrictHostKeyChecking=no -i ~/.ssh/deploy_key $SERVER_CONFIG \
             "cd $APP_DIR/$MODE && docker compose down $APPS" || echo "Down error"
+          ssh -o StrictHostKeyChecking=no -i ~/.ssh/deploy_key $SERVER_CONFIG \
+            "docker system prune -a --volumes -f"
           
           scp -o StrictHostKeyChecking=no -i ~/.ssh/deploy_key all_images.tar \
             $SERVER_CONFIG:$APP_DIR/$MODE || echo "SCP image error"

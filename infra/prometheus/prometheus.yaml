@@ -26,9 +26,15 @@ scrape_configs:
     scrape_interval: 15s
     metrics_path: /metrics
 
-  - job_name: 'bot-service'
+  - job_name: 'tg-service'
     static_configs:
-      - targets: ['bot_service:8081']
+      - targets: ['tg_service:8081']
+    scrape_interval: 15s
+    metrics_path: /metrics
+
+  - job_name: 'vk-service'
+    static_configs:
+      - targets: ['vk_service:8081']
     scrape_interval: 15s
     metrics_path: /metrics
 
@@ -37,22 +43,3 @@ scrape_configs:
       - targets: ['model_service:8000']
     scrape_interval: 15s
     metrics_path: /metrics
-
-  # Blackbox exporter для проверки доступности (опционально)
-#  - job_name: 'blackbox'
-#    metrics_path: /probe
-#    params:
-#      module: [http_2xx]
-#    static_configs:
-#      - targets:
-#          - http://host.docker.internal:8080/health
-#          - http://host.docker.internal:8081/health
-#          - http://host.docker.internal:8082/health
-#          - http://host.docker.internal:8083/health
-#    relabel_configs:
-#      - source_labels: [__address__]
-#        target_label: __param_target
-#      - source_labels: [__param_target]
-#        target_label: instance
-#      - target_label: __address__
-#        replacement: blackbox-exporter:9115

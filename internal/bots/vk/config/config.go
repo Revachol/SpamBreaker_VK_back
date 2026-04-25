@@ -20,13 +20,14 @@ type Config struct {
 	Mode        string              `yaml:"mode"`
 	SwaggerPath string              `yaml:"swagger_path"`
 	Logger      logger.LoggerConfig `yaml:"logger"`
-	Telegram    TelegramConfig      `yaml:"telegram"`
+	Vk          VkConfig            `yaml:"vk"`
 	Metrics     MetricsConfig       `yaml:"metrics"`
 	Core        ServiceConfig       `yaml:"core_service"`
 }
 
-type TelegramConfig struct {
-	Token string `yaml:"token"`
+type VkConfig struct {
+	Token   string `yaml:"token"`
+	GroupID int    `yaml:"group_id"`
 }
 
 type MetricsConfig struct {
@@ -39,7 +40,7 @@ type ServiceConfig struct {
 }
 
 func Load() (*Config, error) {
-	path := getEnv("CONFIG_PATH", "./configs/tg_config.yaml")
+	path := getEnv("CONFIG_PATH", "./configs/vk_config.yaml")
 	data, err := os.ReadFile(path)
 	if err != nil {
 		return nil, fmt.Errorf("failed to read config file: %w", err)
@@ -74,7 +75,7 @@ func loadEnv(cfg *Config) {
 	cfg.Core.Host = getEnv(cfg.Core.Host, "localhost")
 	cfg.Core.Port = getEnv(cfg.Core.Port, "8080")
 
-	cfg.Telegram.Token = getEnv(cfg.Telegram.Token, "")
+	cfg.Vk.Token = getEnv(cfg.Vk.Token, "")
 }
 
 func getEnv(key, fallback string) string {
