@@ -80,7 +80,7 @@ jobs:
           ssh -o StrictHostKeyChecking=no -i ~/.ssh/deploy_key $SERVER_CONFIG \
             "cd $APP_DIR/$MODE && docker compose down $APPS" || echo "Down error"
           ssh -o StrictHostKeyChecking=no -i ~/.ssh/deploy_key $SERVER_CONFIG \
-            "docker system prune -a --volumes"
+            "docker system prune -a --volumes -f"
           
           scp -o StrictHostKeyChecking=no -i ~/.ssh/deploy_key all_images.tar \
             $SERVER_CONFIG:$APP_DIR/$MODE || echo "SCP image error"

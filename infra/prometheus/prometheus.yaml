@@ -43,9 +43,3 @@ scrape_configs:
       - targets: ['model_service:8000']
     scrape_interval: 15s
     metrics_path: /metrics
-
-  - job_name: 'tg-service'
-    static_configs:
-      - targets: ['tg_service:8081']
-    scrape_interval: 15s
-    metrics_path: /metrics
