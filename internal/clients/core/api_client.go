@@ -40,6 +40,55 @@ func NewAPIClient(baseURL string) *APIClient {
 	}
 }
 
+// ActivateChat активирует чат по токену (вызывается ботом при получении /connect TOKEN).
+func (c *APIClient) ActivateChat(ctx context.Context, token, chatID string) error {
+	url := fmt.Sprintf("%s/api/v1/bots/telegram/activate?token=%s&chat_id=%s", c.baseURL, token, chatID)
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, url, nil)
+	if err != nil {
+		return fmt.Errorf("api client: build request: %w", err)
+	}
+
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return fmt.Errorf("api client: request failed: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return fmt.Errorf("api client: activate failed with status %d", resp.StatusCode)
+	}
+
+	return nil
+}
+
+// IsChatActive проверяет, зарегистрирован ли чат в системе.
+func (c *APIClient) IsChatActive(ctx context.Context, chatID string) (bool, error) {
+	url := fmt.Sprintf("%s/api/v1/bots/telegram/internal/chat-active?chat_id=%s", c.baseURL, chatID)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+	if err != nil {
+		return false, fmt.Errorf("api client: build request: %w", err)
+	}
+
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return false, fmt.Errorf("api client: request failed: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return false, fmt.Errorf("api client: unexpected status %d", resp.StatusCode)
+	}
+
+	var result struct {
+		Active bool `json:"active"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+		return false, fmt.Errorf("api client: decode: %w", err)
+	}
+
+	return result.Active, nil
+}
+
 // Check отправляет текст на проверку и возвращает вердикт.
 func (c *APIClient) Check(ctx context.Context, text string) (*CheckResponse, error) {
 	body, err := json.Marshal(CheckRequest{Text: text})

@@ -15,6 +15,9 @@ const (
 	CtxRole        = "moderator_role"
 )
 
+// User ID key for context
+const CtxUserID = "user_id"
+
 // JWTMiddleware проверяет Bearer-токен в заголовке Authorization.
 // Используется для защищённых маршрутов.
 func JWTMiddleware(jwtManager *jwtpkg.Manager) gin.HandlerFunc {
@@ -44,6 +47,7 @@ func JWTMiddleware(jwtManager *jwtpkg.Manager) gin.HandlerFunc {
 		}
 
 		c.Set(CtxModeratorID, claims.ModeratorID)
+		c.Set(CtxUserID, claims.ModeratorID) // For backward compatibility with existing handlers
 		c.Set(CtxUsername, claims.Username)
 		c.Set(CtxRole, claims.Role)
 		c.Next()

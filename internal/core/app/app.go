@@ -12,6 +12,7 @@ import (
 	jwtpkg "github.com/Revachol/SpamBreaker_VK_back/pkg/jwt"
 	"github.com/Revachol/SpamBreaker_VK_back/pkg/logger"
 	"github.com/Revachol/SpamBreaker_VK_back/pkg/postgres"
+	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
 	"github.com/prometheus/client_golang/prometheus"
 )
 
@@ -53,13 +54,25 @@ func Run() {
 	applicationRepo := repository.NewApplicationRepository(pgx, app.logger)
 	applicationSettingsRepo := repository.NewApplicationSettingsRepository(pgx, app.logger)
 
-	// 4. JWT-менеджер.
+	// 4. Telegram API клиент.
+	var telegramAPI *tgbotapi.BotAPI
+	if cfg.Telegram.Token != "" {
+		var err error
+		telegramAPI, err = tgbotapi.NewBotAPI(cfg.Telegram.Token)
+		if err != nil {
+			app.logger.Warnf("failed to connect to Telegram: %v", err)
+		} else {
+			app.logger.Infof("authorized as @%s", telegramAPI.Self.UserName)
+		}
+	}
+
+	// 5. JWT-менеджер.
 	jwtManager := jwtpkg.NewManager(cfg.JWT.Secret, cfg.JWT.TTL)
 
-	// 5. Бизнес-логика.
+	// 6. Бизнес-логика.
 	moderationUC := service.NewModerationUseCase(mlClient, messageRepo, app.logger)
 	authUC := service.NewAuthUseCase(moderatorRepo, jwtManager, app.logger)
-	telegramBotUC := service.NewTelegramBotUseCase(applicationRepo, applicationSettingsRepo, app.logger)
+	telegramBotUC := service.NewTelegramBotUseCase(applicationRepo, applicationSettingsRepo, moderatorRepo, telegramAPI, app.logger)
 
 	// 6. Transport layer.
 	handler := httphandler.NewHandler(moderationUC, telegramBotUC, app.logger)
