@@ -67,7 +67,7 @@ services:
   vk_service:
     build:
       context: .
-      dockerfile: infra/dockerfiles/tg.Dockerfile
+      dockerfile: infra/dockerfiles/vk.Dockerfile
     image: vk-${MODE}:${TAG}
     container_name: vk_${MODE}
     depends_on:
@@ -80,7 +80,7 @@ services:
     environment:
       MODE: ${MODE}
       CONFIG_PATH: ./config.yaml
-      TELEGRAM_TOKEN: ${TELEGRAM_TOKEN}
+      VK_TOKEN: ${VK_TOKEN}
       CORE_HOST: ${CORE_HOST}
       CORE_PORT: ${CORE_PORT}
     networks:

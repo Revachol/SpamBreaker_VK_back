@@ -57,7 +57,6 @@ func (b *VKBot) Run(coll botmetrics.BotMetricsIface) {
 }
 
 func (b *VKBot) handleMessage(msg *object.MessagesMessage) error {
-	b.logger.Debugf("In: %v", msg)
 	// В ВК PeerID > 2000000000 означает групповой чат
 	isGroup := msg.PeerID > 2000000000
 	text := strings.TrimSpace(msg.Text)
@@ -91,8 +90,10 @@ func (b *VKBot) handleMessage(msg *object.MessagesMessage) error {
 		if !isGroup {
 			b.sendMessage(msg.PeerID, utils.FormatError(err), msg.ConversationMessageID)
 		}
+		b.logger.Errorf("VK Check error: %v", err)
 		return expectation.ClientRequestError
 	}
+	b.logger.Debugf("VK Check result: %v", result)
 
 	if isGroup {
 		if result.Label == "negative" && result.Confidence >= spamThreshold {
@@ -127,18 +128,7 @@ func (b *VKBot) handleCommand(msg *object.MessagesMessage) error {
 	case "/start":
 		response = "👋 Привет! Я SpamBreaker для ВКонтакте.\nДобавьте меня в беседу для защиты от спама."
 	case "/connect":
-		if len(parts) < 2 {
-			response = "❌ Используйте: /connect TOKEN"
-		} else {
-			ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-			defer cancel()
-			err := b.client.ActivateChat(ctx, parts[1], strconv.Itoa(msg.PeerID))
-			if err != nil {
-				response = "❌ Ошибка подключения."
-			} else {
-				response = "✅ Чат успешно подключен к SpamBreaker!"
-			}
-		}
+		return b.handleConnect(msg, parts)
 	default:
 		response = "❓ Неизвестная команда."
 	}
@@ -163,4 +153,33 @@ func (b *VKBot) sendMessage(peerID int, text string, replyTo int) {
 	if err != nil {
 		b.logger.Errorf("failed to send message to %d: %v", peerID, err)
 	}
+}
+
+// handleConnect обрабатывает команду /connect TOKEN.
+func (b *VKBot) handleConnect(msg *object.MessagesMessage, parts []string) error {
+	// 1. Проверяем наличие токена в аргументах
+	if len(parts) < 2 {
+		b.sendMessage(msg.PeerID, "❌ Укажите токен: `/connect ВАШ_ТОКЕН`", msg.ConversationMessageID)
+		return nil
+	}
+
+	token := parts[1]
+	chatID := strconv.Itoa(msg.PeerID)
+
+	// 2. Создаем контекст для запроса к Core API
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	// 3. Вызываем активацию чата
+	if err := b.client.ActivateChat(ctx, token, chatID); err != nil {
+		b.logger.Errorf("failed to activate chat %s with token: %v", chatID, err)
+		b.sendMessage(msg.PeerID, "❌ Не удалось подключить бота. Проверьте токен и попробуйте снова.", msg.ConversationMessageID)
+		return err
+	}
+
+	// 4. Отправляем успешный ответ
+	successMsg := "✅ *Бот SpamBreaker успешно подключён!*\n\nМодерация сообщений активирована."
+	b.sendMessage(msg.PeerID, successMsg, msg.ConversationMessageID)
+
+	return nil
 }
