@@ -16,7 +16,7 @@ FastAPI-сервис для Toxicity + Inappropriateness классификац�
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Request, Response
 from pydantic import BaseModel as PydanticBase
 from transformers import BertTokenizer, BertModel
 from spam_filter import SpamFilter
