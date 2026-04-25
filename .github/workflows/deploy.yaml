@@ -61,12 +61,13 @@ jobs:
 
       - name: Prepare images
         run: |
+          APPS=${cat manifest}
           TAG="$(cat VERSION)"
           echo "$BUILD_ENV" > .env
           sed -i "s/^MODE=dev$/MODE=$MODE/" .env
           sed -i "s/^TAG=.*$/TAG=$TAG/" .env
-          docker compose build core_service bot_service model_service
-          docker save -o all_images.tar model-$MODE:$TAG bot-$MODE:$TAG core-$MODE:$TAG
+          docker compose build $APPS
+          docker save -o all_images.tar $(cat manifest | sed "s/_service/-$MODE:$TAG/g")
 
       - name: Deploy
         env:
