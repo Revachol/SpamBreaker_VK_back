@@ -95,7 +95,11 @@ func (b *Bot) handleMessage(msg *tgbotapi.Message) error {
 
 	if isGroup {
 		// Групповой чат: удаляем спам, чистые сообщения игнорируем.
-		if result.Label == "negative" && result.Confidence >= spamThreshold {
+		threshold := spamThreshold
+		if result.Threshold > 0 {
+			threshold = result.Threshold
+		}
+		if result.Label == "negative" && result.Confidence >= threshold {
 			del := tgbotapi.NewDeleteMessage(chatID, msg.MessageID)
 			if _, err := b.api.Request(del); err != nil {
 				b.logger.Errorf("delete message chat=%d msg=%d: %v", chatID, msg.MessageID, err)

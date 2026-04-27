@@ -3,6 +3,7 @@ package httphandler
 import (
 	"net/http"
 	"strconv"
+	"strings"
 
 	"github.com/Revachol/SpamBreaker_VK_back/internal/core/service"
 	"github.com/Revachol/SpamBreaker_VK_back/pkg/logger"
@@ -34,6 +35,7 @@ type checkResponse struct {
 	Confidence float64            `json:"confidence"`
 	AllScores  map[string]float64 `json:"all_scores"`
 	CreatedAt  string             `json:"created_at"`
+	Threshold  float64            `json:"threshold,omitempty"`
 }
 
 type errorResponse struct {
@@ -62,8 +64,11 @@ func (h *Handler) Check(c *gin.Context) {
 		return
 	}
 
-	// Если бот передал chat_id — находим приложение, чтобы привязать запись.
+	// Если бот передал chat_id — находим приложение и загружаем его настройки.
 	applicationID := ""
+	var threshold float64
+	var bannedWords []string
+
 	if req.ChatID != "" {
 		app, err := h.telegramBot.GetByChatID(c.Request.Context(), req.ChatID)
 		if err != nil {
@@ -71,8 +76,36 @@ func (h *Handler) Check(c *gin.Context) {
 		} else if app != nil {
 			applicationID = app.ID
 			h.logger.Infof("Check: chat_id=%q -> application_id=%s", req.ChatID, applicationID)
+			if settings, sErr := h.telegramBot.GetSettings(c.Request.Context(), applicationID); sErr == nil && settings != nil {
+				threshold = float64(settings.ToxicityThreshold) / 100.0
+				bannedWords = settings.BannedWords
+			}
 		} else {
 			h.logger.Warnf("Check: chat_id=%q -> no matching application found", req.ChatID)
+		}
+	}
+
+	// Проверяем запрещённые слова — если есть совпадение, пропускаем ML и сразу возвращаем negative.
+	if len(bannedWords) > 0 {
+		textLower := strings.ToLower(req.Text)
+		for _, word := range bannedWords {
+			if word != "" && strings.Contains(textLower, strings.ToLower(word)) {
+				record, err := h.moderation.CheckTextForcedNegative(c.Request.Context(), req.Text, applicationID)
+				if err != nil {
+					c.JSON(http.StatusBadRequest, errorResponse{Error: err.Error()})
+					return
+				}
+				c.JSON(http.StatusOK, checkResponse{
+					ID:         record.ID,
+					Text:       record.Text,
+					Label:      record.Verdict.Label,
+					Confidence: record.Verdict.Confidence,
+					AllScores:  record.Verdict.AllScores,
+					CreatedAt:  record.CreatedAt.Format("2006-01-02T15:04:05Z"),
+					Threshold:  threshold,
+				})
+				return
+			}
 		}
 	}
 
@@ -94,6 +127,7 @@ func (h *Handler) Check(c *gin.Context) {
 		Confidence: record.Verdict.Confidence,
 		AllScores:  record.Verdict.AllScores,
 		CreatedAt:  record.CreatedAt.Format("2006-01-02T15:04:05Z"),
+		Threshold:  threshold,
 	})
 }
 
