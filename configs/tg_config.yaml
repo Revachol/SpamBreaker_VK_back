@@ -12,7 +12,7 @@ app:
     token: TELEGRAM_TOKEN
 
   metrics:
-    port: 8081
+    port: 8080
 
   core_service:
     host: CORE_HOST
