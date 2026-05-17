@@ -26,9 +26,14 @@ type Config struct {
 	ML          ServiceConfig       `yaml:"ml_service"`
 	JWT         JWTConfig           `yaml:"jwt"`
 	Telegram    TelegramConfig      `yaml:"telegram"`
+	Vk          VkConfig            `yaml:"vk"`
 }
 
 type TelegramConfig struct {
+	Token string `yaml:"token"`
+}
+
+type VkConfig struct {
 	Token string `yaml:"token"`
 }
 
@@ -132,9 +137,10 @@ func loadEnv(cfg *Config) {
 
 	// JWT секрет обязательно берём из переменной окружения.
 	cfg.JWT.Secret = getEnv(cfg.JWT.Secret, "changeme-set-JWT_SECRET-in-env")
-	
+
 	// Telegram token from environment
 	cfg.Telegram.Token = getEnv(cfg.Telegram.Token, "")
+	cfg.Vk.Token = getEnv(cfg.Vk.Token, "")
 }
 
 func getEnv(key, fallback string) string {

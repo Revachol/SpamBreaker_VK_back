@@ -10,7 +10,6 @@ app:
 
   vk:
     token: VK_TOKEN
-    group_id: 238063118
 
   metrics:
     port: 8081
