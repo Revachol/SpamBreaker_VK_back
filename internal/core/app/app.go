@@ -12,6 +12,7 @@ import (
 	jwtpkg "github.com/Revachol/SpamBreaker_VK_back/pkg/jwt"
 	"github.com/Revachol/SpamBreaker_VK_back/pkg/logger"
 	"github.com/Revachol/SpamBreaker_VK_back/pkg/postgres"
+	"github.com/SevereCloud/vksdk/v2/api"
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
 	"github.com/prometheus/client_golang/prometheus"
 )
@@ -65,6 +66,10 @@ func Run() {
 			app.logger.Infof("authorized as @%s", telegramAPI.Self.UserName)
 		}
 	}
+	if cfg.Vk.Token == "" {
+		app.logger.Fatal("VK token not configured")
+	}
+	vk := api.NewVK(cfg.Vk.Token)
 
 	// 5. JWT-менеджер.
 	jwtManager := jwtpkg.NewManager(cfg.JWT.Secret, cfg.JWT.TTL)
@@ -73,15 +78,18 @@ func Run() {
 	moderationUC := service.NewModerationUseCase(mlClient, messageRepo, app.logger)
 	authUC := service.NewAuthUseCase(moderatorRepo, jwtManager, app.logger)
 	telegramBotUC := service.NewTelegramBotUseCase(applicationRepo, applicationSettingsRepo, moderatorRepo, telegramAPI, app.logger)
+	vkBotUC := service.NewVkBotUseCase(applicationRepo, applicationSettingsRepo, moderatorRepo, vk, app.logger)
 
 	// 6. Transport layer.
 	handler := httphandler.NewHandler(moderationUC, telegramBotUC, app.logger)
 	authHandler := httphandler.NewAuthHandler(authUC, app.logger)
 	telegramBotHandler := httphandler.NewTelegramBotHandler(telegramBotUC, app.logger)
+	vkBotHandler := httphandler.NewVkBotHandler(vkBotUC, app.logger)
 	router := httphandler.NewRouter(
 		handler,
 		authHandler,
 		telegramBotHandler,
+		vkBotHandler,
 		jwtManager,
 		app.registry,
 		app.config,

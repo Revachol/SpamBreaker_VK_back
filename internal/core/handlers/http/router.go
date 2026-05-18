@@ -19,6 +19,7 @@ func NewRouter(
 	h *Handler,
 	ah *AuthHandler,
 	tbh *TelegramBotHandler,
+	vbh *VkBotHandler,
 	jwtManager *jwtpkg.Manager,
 	reg *prometheus.Registry,
 	cfg *config.Config,
@@ -73,6 +74,20 @@ func NewRouter(
 			telegram.GET("/admins", tbh.GetAdmins)
 			telegram.POST("/admins", tbh.AddAdmin)
 			telegram.DELETE("/admins/:username", tbh.RemoveAdmin)
+		}
+
+		// Telegram bot routes
+		vk := v1.Group("/bots/vk")
+		{
+			vk.GET("/token", vbh.GetToken)
+			vk.GET("/status", vbh.GetStatus)
+			vk.GET("/settings", vbh.GetSettings)
+			vk.POST("/settings", vbh.UpdateSettings)
+			vk.POST("/verify-chat", vbh.VerifyChat)
+			vk.POST("/disable", vbh.DisableBot)
+			vk.GET("/admins", vbh.GetAdmins)
+			vk.POST("/admins", vbh.AddAdmin)
+			vk.DELETE("/admins/:username", vbh.RemoveAdmin)
 		}
 	}
 

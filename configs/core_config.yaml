@@ -35,3 +35,9 @@ app:
     # Здесь указываем имя переменной — config.loadEnv подставит реальное значение.
     secret: JWT_SECRET
     ttl: 24h
+
+  telegram:
+    token: TELEGRAM_TOKEN
+
+  vk:
+    token: VK_TOKEN

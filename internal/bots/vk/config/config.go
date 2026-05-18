@@ -26,8 +26,7 @@ type Config struct {
 }
 
 type VkConfig struct {
-	Token   string `yaml:"token"`
-	GroupID int    `yaml:"group_id"`
+	Token string `yaml:"token"`
 }
 
 type MetricsConfig struct {
