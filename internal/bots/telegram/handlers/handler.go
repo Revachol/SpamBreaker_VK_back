@@ -50,6 +50,11 @@ const spamThreshold = 0.70
 
 // handleMessage обрабатывает одно входящее сообщение.
 func (b *Bot) handleMessage(msg *tgbotapi.Message) error {
+	// Бот добавлен в группу — отправляем приветствие со ссылкой на регистрацию.
+	if len(msg.NewChatMembers) > 0 {
+		return b.handleNewMembers(msg)
+	}
+
 	chatID := msg.Chat.ID
 	text := strings.TrimSpace(msg.Text)
 
@@ -170,6 +175,37 @@ func (b *Bot) handleCommand(msg *tgbotapi.Message) error {
 	return nil
 }
 
+// handleNewMembers отправляет приветствие, когда бот добавляется в группу.
+func (b *Bot) handleNewMembers(msg *tgbotapi.Message) error {
+	for _, member := range msg.NewChatMembers {
+		if member.UserName == b.api.Self.UserName {
+			text := "👋 Привет! Я *SpamBreaker* — бот для защиты от спама.\n\n" +
+				"Чтобы начать модерацию, зарегистрируйтесь на сайте и подключите меня к группе:\n" +
+				"🔗 http://87.239.104.16:3000\n\n" +
+				"После регистрации получите токен и отправьте в этот чат:\n" +
+				"`/connect ВАШ_ТОКЕН`"
+			reply := tgbotapi.NewMessage(msg.Chat.ID, text)
+			reply.ParseMode = tgbotapi.ModeMarkdown
+			b.api.Send(reply) //nolint:errcheck
+			return nil
+		}
+	}
+	return nil
+}
+
+func (b *Bot) isUserChatAdmin(chatID, userID int64) (bool, error) {
+	member, err := b.api.GetChatMember(tgbotapi.GetChatMemberConfig{
+		ChatConfigWithUser: tgbotapi.ChatConfigWithUser{
+			ChatID: chatID,
+			UserID: userID,
+		},
+	})
+	if err != nil {
+		return false, err
+	}
+	return member.IsAdministrator() || member.IsCreator(), nil
+}
+
 // handleConnect обрабатывает команду /connect TOKEN.
 func (b *Bot) handleConnect(msg *tgbotapi.Message) error {
 	token := strings.TrimSpace(msg.CommandArguments())
@@ -178,6 +214,21 @@ func (b *Bot) handleConnect(msg *tgbotapi.Message) error {
 		reply.ParseMode = tgbotapi.ModeMarkdown
 		b.api.Send(reply) //nolint:errcheck
 		return nil
+	}
+
+	if msg.Chat.IsGroup() || msg.Chat.IsSuperGroup() {
+		isAdmin, err := b.isUserChatAdmin(msg.Chat.ID, msg.From.ID)
+		if err != nil {
+			b.logger.Warnf("admin check failed chat=%d user=%d: %v", msg.Chat.ID, msg.From.ID, err)
+			reply := tgbotapi.NewMessage(msg.Chat.ID, "⚠️ Не удалось проверить права. Попробуйте позже.")
+			b.api.Send(reply) //nolint:errcheck
+			return nil
+		}
+		if !isAdmin {
+			reply := tgbotapi.NewMessage(msg.Chat.ID, "❌ Только администраторы группы могут подключить бота.")
+			b.api.Send(reply) //nolint:errcheck
+			return nil
+		}
 	}
 
 	chatID := strconv.FormatInt(msg.Chat.ID, 10)
