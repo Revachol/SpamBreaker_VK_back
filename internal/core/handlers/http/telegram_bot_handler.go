@@ -1,7 +1,9 @@
+// === internal/transport/httphandler/telegram_bot_handler.go ===
 package httphandler
 
 import (
 	"net/http"
+	"strconv"
 	"time"
 
 	"github.com/Revachol/SpamBreaker_VK_back/internal/core/service"
@@ -10,18 +12,24 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-// TelegramBotHandler handles Telegram bot related HTTP requests.
+// TelegramBotHandler отвечает за управление ботами и администраторами.
 type TelegramBotHandler struct {
 	telegramBot *service.TelegramBotUseCase
 	logger      logger.Log
 }
 
-// NewTelegramBotHandler creates a new TelegramBotHandler.
-func NewTelegramBotHandler(telegramBot *service.TelegramBotUseCase, l logger.Log) *TelegramBotHandler {
-	return &TelegramBotHandler{telegramBot: telegramBot, logger: l}
+// NewTelegramBotHandler создаёт новый TelegramBotHandler.
+func NewTelegramBotHandler(
+	telegramBot *service.TelegramBotUseCase,
+	l logger.Log,
+) *TelegramBotHandler {
+	return &TelegramBotHandler{
+		telegramBot: telegramBot,
+		logger:      l,
+	}
 }
 
-// ---------- Request / Response DTOs ----------
+// ---------- DTOs ----------
 
 type telegramBotTokenResponse struct {
 	Token     string `json:"token"`
@@ -47,39 +55,29 @@ type telegramBotSettingsRequest struct {
 	Enabled     *bool     `json:"enabled,omitempty"`
 }
 
-type verifyChatRequest struct {
-	ChatID string `json:"chat_id" binding:"required"`
+type AddChatRequest struct {
+	ChatID  string `json:"chat_id" binding:"required"`
+	UserID  string `json:"user_id" binding:"required"`
+	IsAdmin bool   `json:"is_admin" binding:"required"`
 }
 
-type verifyChatResponse struct {
-	Success   bool   `json:"success"`
-	Verified  bool   `json:"verified"`
-	Message   string `json:"message"`
-	Activated bool   `json:"activated"`
-	Token     string `json:"token"`
-}
-
-type adminInfoResponse struct {
-	ID       string `json:"id"`
-	Username string `json:"username"`
-}
-
-type addAdminRequest struct {
-	Username string `json:"username" binding:"required"`
+type AddChatResponse struct {
+	Verified bool   `json:"verified"`
+	Message  string `json:"message"`
 }
 
 // ---------- Handlers ----------
 
 // GetToken godoc
 //
-//	@Summary     Получить токен для активации Telegram бота
-//	@Description Генерирует новый токен для активации Telegram бота
-//	@Tags        telegram
-//	@Produce     json
-//	@Success     200 {object} telegramBotTokenResponse
-//	@Failure     500 {object} errorResponse
-//	@Router      /api/v1/bots/telegram/token [get]
-//	@Security    Bearer
+//	@Summary      Получить токен для активации Telegram бота
+//	@Description  Генерирует или возвращает существующий токен для Telegram бота пользователя
+//	@Tags         telegram-bot
+//	@Produce      json
+//	@Success      200 {object} telegramBotTokenResponse
+//	@Failure      500 {object} errorResponse
+//	@Router       /api/v1/bots/telegram/token [get]
+//	@Security     Bearer
 func (h *TelegramBotHandler) GetToken(c *gin.Context) {
 	userID, exists := c.Get("user_id")
 	if !exists {
@@ -87,7 +85,6 @@ func (h *TelegramBotHandler) GetToken(c *gin.Context) {
 		return
 	}
 
-	// Возвращаем токен существующего приложения если есть, иначе создаём новое.
 	apps, err := h.telegramBot.ListBots(c.Request.Context(), userID.(string))
 	if err != nil {
 		h.logger.Errorf("Error listing bots: %s", err)
@@ -107,7 +104,6 @@ func (h *TelegramBotHandler) GetToken(c *gin.Context) {
 		}
 	}
 
-	// Приложения нет — создаём
 	newApp, err := h.telegramBot.GenerateToken(c.Request.Context(), userID.(string))
 	if err != nil {
 		h.logger.Errorf("Error generating token: %s", err)
@@ -125,16 +121,16 @@ func (h *TelegramBotHandler) GetToken(c *gin.Context) {
 
 // GetStatus godoc
 //
-//	@Summary     Получить статус Telegram бота
-//	@Description Проверяет статус подключения Telegram бота по токену
-//	@Tags        telegram
-//	@Produce     json
-//	@Param       token query    string true "Токен активации"
-//	@Success     200   {object} telegramBotStatusResponse
-//	@Failure     400   {object} errorResponse
-//	@Failure     500   {object} errorResponse
-//	@Router      /api/v1/bots/telegram/status [get]
-//	@Security    Bearer
+//	@Summary      Получить статус Telegram бота
+//	@Description  Возвращает статус подключения бота по токену
+//	@Tags         telegram-bot
+//	@Produce      json
+//	@Param        token query string true "Токен активации"
+//	@Success      200 {object} telegramBotStatusResponse
+//	@Failure      400 {object} errorResponse
+//	@Failure      500 {object} errorResponse
+//	@Router       /api/v1/bots/telegram/status [get]
+//	@Security     Bearer
 func (h *TelegramBotHandler) GetStatus(c *gin.Context) {
 	token := c.Query("token")
 	if token == "" {
@@ -142,10 +138,9 @@ func (h *TelegramBotHandler) GetStatus(c *gin.Context) {
 		return
 	}
 
-	// Получаем приложение по токену
 	app, err := h.telegramBot.GetByToken(c.Request.Context(), token)
 	if err != nil {
-		h.logger.Errorf("Error getting application by token: %s", err)
+		h.logger.Errorf("Error getting application: %s", err)
 		c.JSON(http.StatusInternalServerError, errorResponse{Error: "failed to get application"})
 		return
 	}
@@ -155,41 +150,30 @@ func (h *TelegramBotHandler) GetStatus(c *gin.Context) {
 		return
 	}
 
-	// Формируем ответ
-	response := telegramBotStatusResponse{
-		Connected: app.Status == "active",
-	}
-
+	resp := telegramBotStatusResponse{Connected: app.Status == "active"}
 	if app.ExternalID != "" {
-		response.ChatID = app.ExternalID
+		resp.ChatID = app.ExternalID
 	}
-
 	if !app.UpdatedAt.IsZero() && app.Status == "active" {
-		response.ActivatedAt = app.UpdatedAt.Format(time.RFC3339)
+		resp.ActivatedAt = app.UpdatedAt.Format(time.RFC3339)
 	}
-
-	c.JSON(http.StatusOK, response)
+	c.JSON(http.StatusOK, resp)
 }
 
 // GetSettings godoc
 //
-//	@Summary     Получить настройки Telegram бота
-//	@Description Возвращает текущие настройки Telegram бота
-//	@Tags        telegram
-//	@Produce     json
-//	@Success     200 {object} telegramBotSettingsResponse
-//	@Failure     500 {object} errorResponse
-//	@Router      /api/v1/bots/telegram/settings [get]
-//	@Security    Bearer
+//	@Summary      Получить настройки Telegram бота
+//	@Description  Возвращает настройки активного Telegram бота текущего пользователя
+//	@Tags         telegram-bot
+//	@Produce      json
+//	@Success      200 {object} telegramBotSettingsResponse
+//	@Failure      404 {object} errorResponse
+//	@Failure      500 {object} errorResponse
+//	@Router       /api/v1/bots/telegram/settings [get]
+//	@Security     Bearer
 func (h *TelegramBotHandler) GetSettings(c *gin.Context) {
-	// Получаем ID пользователя из контекста
-	userID, exists := c.Get("user_id")
-	if !exists {
-		c.JSON(http.StatusUnauthorized, errorResponse{Error: "user not authenticated"})
-		return
-	}
+	userID, _ := c.Get("user_id")
 
-	// Получаем список ботов пользователя (берем первый активный)
 	apps, err := h.telegramBot.ListAccessibleBots(c.Request.Context(), userID.(string))
 	if err != nil {
 		h.logger.Errorf("Error listing bots: %s", err)
@@ -197,7 +181,6 @@ func (h *TelegramBotHandler) GetSettings(c *gin.Context) {
 		return
 	}
 
-	// Ищем активный Telegram бот
 	var activeApp *domain.Application
 	for _, app := range apps {
 		if app.Platform == "telegram" && app.Status == "active" {
@@ -205,13 +188,11 @@ func (h *TelegramBotHandler) GetSettings(c *gin.Context) {
 			break
 		}
 	}
-
 	if activeApp == nil {
 		c.JSON(http.StatusNotFound, errorResponse{Error: "no active telegram bot found"})
 		return
 	}
 
-	// Получаем настройки
 	settings, err := h.telegramBot.GetSettings(c.Request.Context(), activeApp.ID)
 	if err != nil {
 		h.logger.Errorf("Error getting settings: %s", err)
@@ -228,33 +209,27 @@ func (h *TelegramBotHandler) GetSettings(c *gin.Context) {
 
 // UpdateSettings godoc
 //
-//	@Summary     Обновить настройки Telegram бота
-//	@Description Обновляет настройки Telegram бота
-//	@Tags        telegram
-//	@Accept      json
-//	@Produce     json
-//	@Param       body body     telegramBotSettingsRequest true "Новые настройки"
-//	@Success     200  {object} telegramBotSettingsResponse
-//	@Failure     400  {object} errorResponse
-//	@Failure     500  {object} errorResponse
-//	@Router      /api/v1/bots/telegram/settings [post]
-//	@Security    Bearer
+//	@Summary      Обновить настройки Telegram бота
+//	@Description  Обновляет настройки активного Telegram бота
+//	@Tags         telegram-bot
+//	@Accept       json
+//	@Produce      json
+//	@Param        body body telegramBotSettingsRequest true "Новые настройки"
+//	@Success      200 {object} telegramBotSettingsResponse
+//	@Failure      400 {object} errorResponse
+//	@Failure      404 {object} errorResponse
+//	@Failure      500 {object} errorResponse
+//	@Router       /api/v1/bots/telegram/settings [post]
+//	@Security     Bearer
 func (h *TelegramBotHandler) UpdateSettings(c *gin.Context) {
-	// Получаем ID пользователя из контекста
-	userID, exists := c.Get("user_id")
-	if !exists {
-		c.JSON(http.StatusUnauthorized, errorResponse{Error: "user not authenticated"})
-		return
-	}
+	userID, _ := c.Get("user_id")
 
 	var req telegramBotSettingsRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		h.logger.Warnf("Bind error %s", err)
 		c.JSON(http.StatusBadRequest, errorResponse{Error: err.Error()})
 		return
 	}
 
-	// Получаем список ботов пользователя (берем первый активный)
 	apps, err := h.telegramBot.ListAccessibleBots(c.Request.Context(), userID.(string))
 	if err != nil {
 		h.logger.Errorf("Error listing bots: %s", err)
@@ -262,7 +237,6 @@ func (h *TelegramBotHandler) UpdateSettings(c *gin.Context) {
 		return
 	}
 
-	// Ищем активный Telegram бот
 	var activeApp *domain.Application
 	for _, app := range apps {
 		if app.Platform == "telegram" && app.Status == "active" {
@@ -270,13 +244,11 @@ func (h *TelegramBotHandler) UpdateSettings(c *gin.Context) {
 			break
 		}
 	}
-
 	if activeApp == nil {
 		c.JSON(http.StatusNotFound, errorResponse{Error: "no active telegram bot found"})
 		return
 	}
 
-	// Получаем текущие настройки
 	settings, err := h.telegramBot.GetSettings(c.Request.Context(), activeApp.ID)
 	if err != nil {
 		h.logger.Errorf("Error getting settings: %s", err)
@@ -284,7 +256,6 @@ func (h *TelegramBotHandler) UpdateSettings(c *gin.Context) {
 		return
 	}
 
-	// Обновляем настройки
 	if req.Sensitivity != nil {
 		settings.ToxicityThreshold = *req.Sensitivity
 	}
@@ -294,7 +265,6 @@ func (h *TelegramBotHandler) UpdateSettings(c *gin.Context) {
 	if req.Enabled != nil {
 		settings.AutoModerate = *req.Enabled
 	}
-
 	settings.UpdatedAt = time.Now().UTC()
 
 	if err := h.telegramBot.UpdateSettings(c.Request.Context(), settings); err != nil {
@@ -312,23 +282,18 @@ func (h *TelegramBotHandler) UpdateSettings(c *gin.Context) {
 
 // DisableBot godoc
 //
-//	@Summary     Отключить Telegram бота
-//	@Description Отключает Telegram бота
-//	@Tags        telegram
-//	@Produce     json
-//	@Success     200 {object} map[string]bool
-//	@Failure     500 {object} errorResponse
-//	@Router      /api/v1/bots/telegram/disable [post]
-//	@Security    Bearer
+//	@Summary      Отключить Telegram бота
+//	@Description  Деактивирует активного Telegram бота пользователя
+//	@Tags         telegram-bot
+//	@Produce      json
+//	@Success      200 {object} map[string]bool
+//	@Failure      404 {object} errorResponse
+//	@Failure      500 {object} errorResponse
+//	@Router       /api/v1/bots/telegram/disable [post]
+//	@Security     Bearer
 func (h *TelegramBotHandler) DisableBot(c *gin.Context) {
-	// Получаем ID пользователя из контекста
-	userID, exists := c.Get("user_id")
-	if !exists {
-		c.JSON(http.StatusUnauthorized, errorResponse{Error: "user not authenticated"})
-		return
-	}
+	userID, _ := c.Get("user_id")
 
-	// Получаем список ботов пользователя (берем первый активный)
 	apps, err := h.telegramBot.ListAccessibleBots(c.Request.Context(), userID.(string))
 	if err != nil {
 		h.logger.Errorf("Error listing bots: %s", err)
@@ -336,7 +301,6 @@ func (h *TelegramBotHandler) DisableBot(c *gin.Context) {
 		return
 	}
 
-	// Ищем активный Telegram бот
 	var activeApp *domain.Application
 	for _, app := range apps {
 		if app.Platform == "telegram" && app.Status == "active" {
@@ -344,13 +308,11 @@ func (h *TelegramBotHandler) DisableBot(c *gin.Context) {
 			break
 		}
 	}
-
 	if activeApp == nil {
 		c.JSON(http.StatusNotFound, errorResponse{Error: "no active telegram bot found"})
 		return
 	}
 
-	// Отключаем бота
 	if err := h.telegramBot.DisableBot(c.Request.Context(), activeApp.ID); err != nil {
 		h.logger.Errorf("Error disabling bot: %s", err)
 		c.JSON(http.StatusInternalServerError, errorResponse{Error: "failed to disable bot"})
@@ -360,87 +322,16 @@ func (h *TelegramBotHandler) DisableBot(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"success": true})
 }
 
-// VerifyChat godoc
-//
-//	@Summary     Проверить и активировать Telegram бота
-//	@Description Проверяет, что бот находится в указанном чате, и активирует его
-//	@Tags        telegram
-//	@Accept      json
-//	@Produce     json
-//	@Param       body body     verifyChatRequest true "ID или username чата Telegram"
-//	@Success     200  {object} verifyChatResponse
-//	@Failure     400  {object} errorResponse
-//	@Failure     500  {object} errorResponse
-//	@Router      /api/v1/bots/telegram/verify-chat [post]
-//	@Security    Bearer
-func (h *TelegramBotHandler) VerifyChat(c *gin.Context) {
-	var req verifyChatRequest
-	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, errorResponse{Error: err.Error()})
-		return
-	}
-
-	// Получаем ID пользователя из контекста
-	userID, exists := c.Get("user_id")
-	if !exists {
-		c.JSON(http.StatusUnauthorized, errorResponse{Error: "user not authenticated"})
-		return
-	}
-
-	// Получаем приложение пользователя
-	apps, err := h.telegramBot.ListBots(c.Request.Context(), userID.(string))
-	if err != nil {
-		h.logger.Errorf("Error listing bots: %s", err)
-		c.JSON(http.StatusInternalServerError, errorResponse{Error: "failed to list bots"})
-		return
-	}
-
-	// Ищем Telegram бот пользователя
-	var userApp *domain.Application
-	for _, app := range apps {
-		if app.Platform == "telegram" {
-			userApp = app
-			break
-		}
-	}
-
-	// Если приложения нет — создаём автоматически
-	if userApp == nil {
-		newApp, err := h.telegramBot.GenerateToken(c.Request.Context(), userID.(string))
-		if err != nil {
-			h.logger.Errorf("Error creating application: %s", err)
-			c.JSON(http.StatusInternalServerError, errorResponse{Error: "failed to create application"})
-			return
-		}
-		userApp = newApp
-	}
-
-	// Проверяем чат
-	if err := h.telegramBot.VerifyChat(c.Request.Context(), userApp.ID, req.ChatID); err != nil {
-		h.logger.Errorf("Error verifying chat: %s", err)
-		c.JSON(http.StatusInternalServerError, errorResponse{Error: "failed to verify chat: " + err.Error()})
-		return
-	}
-
-	c.JSON(http.StatusOK, verifyChatResponse{
-		Success:   true,
-		Verified:  true,
-		Message:   "Bot successfully verified and activated in chat",
-		Activated: true,
-		Token:     userApp.Token,
-	})
-}
-
 // IsChatActive godoc
 //
-//	@Summary     Проверить, зарегистрирован ли чат
-//	@Description Внутренний эндпоинт для бота — проверяет, активен ли чат в системе
-//	@Tags        telegram-internal
-//	@Produce     json
-//	@Param       chat_id query  string true "Числовой ID чата Telegram"
-//	@Success     200     {object} map[string]bool
-//	@Failure     400     {object} errorResponse
-//	@Router      /api/v1/bots/telegram/internal/chat-active [get]
+//	@Summary      Проверить, активен ли чат
+//	@Description  Внутренний эндпоинт для бота — проверяет, зарегистрирован ли чат в системе
+//	@Tags         telegram-internal
+//	@Produce      json
+//	@Param        chat_id query string true "Числовой ID чата Telegram"
+//	@Success      200 {object} map[string]bool
+//	@Failure      400 {object} errorResponse
+//	@Router       /api/v1/bots/telegram/internal/chat-active [get]
 func (h *TelegramBotHandler) IsChatActive(c *gin.Context) {
 	chatID := c.Query("chat_id")
 	if chatID == "" {
@@ -450,7 +341,7 @@ func (h *TelegramBotHandler) IsChatActive(c *gin.Context) {
 
 	active, err := h.telegramBot.IsChatActive(c.Request.Context(), chatID)
 	if err != nil {
-		h.logger.Errorf("Error checking chat active status: %s", err)
+		h.logger.Errorf("Error checking chat active: %s", err)
 		c.JSON(http.StatusInternalServerError, errorResponse{Error: "internal error"})
 		return
 	}
@@ -458,204 +349,45 @@ func (h *TelegramBotHandler) IsChatActive(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"active": active})
 }
 
-// GetAdmins возвращает список соадминов бота текущего пользователя.
-func (h *TelegramBotHandler) GetAdmins(c *gin.Context) {
-	userID, exists := c.Get("user_id")
-	if !exists {
-		c.JSON(http.StatusUnauthorized, errorResponse{Error: "user not authenticated"})
-		return
-	}
-
-	apps, err := h.telegramBot.ListAccessibleBots(c.Request.Context(), userID.(string))
-	if err != nil {
-		h.logger.Errorf("Error listing bots: %s", err)
-		c.JSON(http.StatusInternalServerError, errorResponse{Error: "failed to list bots"})
-		return
-	}
-
-	var activeApp *domain.Application
-	for _, app := range apps {
-		if app.Platform == "telegram" && app.Status == "active" {
-			activeApp = app
-			break
-		}
-	}
-	if activeApp == nil {
-		c.JSON(http.StatusNotFound, errorResponse{Error: "no active telegram bot found"})
-		return
-	}
-
-	admins, err := h.telegramBot.GetAdmins(c.Request.Context(), activeApp.ID)
-	if err != nil {
-		h.logger.Errorf("Error getting admins: %s", err)
-		c.JSON(http.StatusInternalServerError, errorResponse{Error: "failed to get admins"})
-		return
-	}
-
-	resp := make([]adminInfoResponse, 0, len(admins))
-	for _, m := range admins {
-		resp = append(resp, adminInfoResponse{ID: m.ID, Username: m.Username})
-	}
-	c.JSON(http.StatusOK, resp)
-}
-
-// AddAdmin добавляет соадмина по username. Только владелец бота.
-func (h *TelegramBotHandler) AddAdmin(c *gin.Context) {
-	userID, exists := c.Get("user_id")
-	if !exists {
-		c.JSON(http.StatusUnauthorized, errorResponse{Error: "user not authenticated"})
-		return
-	}
-
-	var req addAdminRequest
+// VerifyAddChat godoc
+//
+//	@Summary      Проверить, что бот добавлен администратором с верификацией
+//	@Description  Вызывается при событии my_chat_member: проверяет, что добавивший — верифицированный администратор чата
+//	@Tags         telegram-internal
+//	@Accept       json
+//	@Produce      json
+//	@Param        body body object{chat_id=int,user_id=int} true "chat_id и user_id добавившего"
+//	@Success      200 {object} map[string]bool
+//	@Failure      400 {object} errorResponse
+//	@Failure      403 {object} errorResponse
+//	@Failure      500 {object} errorResponse
+//	@Router       /api/v1/bots/telegram/verify-add-chat [post]
+func (h *BotHandler) VerifyAddChat(c *gin.Context) {
+	var req AddChatRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, errorResponse{Error: err.Error()})
 		return
 	}
 
-	apps, err := h.telegramBot.ListBots(c.Request.Context(), userID.(string))
+	// 1. Проверяем, верифицирован ли пользователь
+	uid, err := strconv.ParseInt(req.UserID, 10, 64)
 	if err != nil {
-		h.logger.Errorf("Error listing bots: %s", err)
-		c.JSON(http.StatusInternalServerError, errorResponse{Error: "failed to list bots"})
-		return
+		c.JSON(http.StatusBadRequest, errorResponse{Error: "invalid user id"})
 	}
-
-	var activeApp *domain.Application
-	for _, app := range apps {
-		if app.Platform == "telegram" && app.Status == "active" {
-			activeApp = app
-			break
-		}
-	}
-	if activeApp == nil {
-		c.JSON(http.StatusNotFound, errorResponse{Error: "no active telegram bot found"})
-		return
-	}
-
-	added, err := h.telegramBot.AddAdmin(c.Request.Context(), userID.(string), activeApp.ID, req.Username)
+	_, err = h.moderatorService.GetModeratorIDByVerifiedTelegramID(c.Request.Context(), uid)
 	if err != nil {
-		switch err.Error() {
-		case "forbidden":
-			c.JSON(http.StatusForbidden, errorResponse{Error: "only the bot owner can manage admins"})
-		case "user not found":
-			c.JSON(http.StatusNotFound, errorResponse{Error: "user not found"})
-		case "cannot add yourself as admin":
-			c.JSON(http.StatusBadRequest, errorResponse{Error: "cannot add yourself as admin"})
-		default:
-			h.logger.Errorf("Error adding admin: %s", err)
-			c.JSON(http.StatusInternalServerError, errorResponse{Error: "failed to add admin"})
-		}
+		h.logger.Warnf("VerifyAddChat: unverified user %d: %v", req.UserID, err)
+		c.JSON(http.StatusForbidden, errorResponse{Error: "пользователь не верифицирован"})
 		return
 	}
-
-	admins, err := h.telegramBot.GetAdmins(c.Request.Context(), activeApp.ID)
-	if err != nil {
-		h.logger.Errorf("Error getting admins after add: %s", err)
-		c.JSON(http.StatusInternalServerError, errorResponse{Error: "failed to get admins"})
+	if !req.IsAdmin {
+		c.JSON(http.StatusForbidden, AddChatResponse{Verified: false, Message: "пользователь не является администратором чата"})
 		return
 	}
+	h.telegramBot.GenerateToken(c, req.UserID)
 
-	_ = added
-	resp := make([]adminInfoResponse, 0, len(admins))
-	for _, m := range admins {
-		resp = append(resp, adminInfoResponse{ID: m.ID, Username: m.Username})
-	}
-	c.JSON(http.StatusOK, resp)
-}
-
-// RemoveAdmin удаляет соадмина по username. Только владелец бота.
-func (h *TelegramBotHandler) RemoveAdmin(c *gin.Context) {
-	userID, exists := c.Get("user_id")
-	if !exists {
-		c.JSON(http.StatusUnauthorized, errorResponse{Error: "user not authenticated"})
-		return
-	}
-
-	targetUsername := c.Param("username")
-	if targetUsername == "" {
-		c.JSON(http.StatusBadRequest, errorResponse{Error: "username is required"})
-		return
-	}
-
-	apps, err := h.telegramBot.ListBots(c.Request.Context(), userID.(string))
-	if err != nil {
-		h.logger.Errorf("Error listing bots: %s", err)
-		c.JSON(http.StatusInternalServerError, errorResponse{Error: "failed to list bots"})
-		return
-	}
-
-	var activeApp *domain.Application
-	for _, app := range apps {
-		if app.Platform == "telegram" && app.Status == "active" {
-			activeApp = app
-			break
-		}
-	}
-	if activeApp == nil {
-		c.JSON(http.StatusNotFound, errorResponse{Error: "no active telegram bot found"})
-		return
-	}
-
-	if err := h.telegramBot.RemoveAdmin(c.Request.Context(), userID.(string), activeApp.ID, targetUsername); err != nil {
-		switch err.Error() {
-		case "forbidden":
-			c.JSON(http.StatusForbidden, errorResponse{Error: "only the bot owner can manage admins"})
-		case "user not found":
-			c.JSON(http.StatusNotFound, errorResponse{Error: "user not found"})
-		default:
-			h.logger.Errorf("Error removing admin: %s", err)
-			c.JSON(http.StatusInternalServerError, errorResponse{Error: "failed to remove admin"})
-		}
-		return
-	}
-
-	admins, err := h.telegramBot.GetAdmins(c.Request.Context(), activeApp.ID)
-	if err != nil {
-		h.logger.Errorf("Error getting admins after remove: %s", err)
-		c.JSON(http.StatusInternalServerError, errorResponse{Error: "failed to get admins"})
-		return
-	}
-
-	resp := make([]adminInfoResponse, 0, len(admins))
-	for _, m := range admins {
-		resp = append(resp, adminInfoResponse{ID: m.ID, Username: m.Username})
-	}
-	c.JSON(http.StatusOK, resp)
-}
-
-// ActivateBot godoc
-//
-//	@Summary     Активировать Telegram бота
-//	@Description Активирует Telegram бота по токену и ID чата (вызывается Telegram ботом)
-//	@Tags        telegram
-//	@Accept      json
-//	@Produce     json
-//	@Param       token query    string true "Токен активации"
-//	@Param       chat_id query  string true "ID чата Telegram"
-//	@Success     200   {object} map[string]bool
-//	@Failure     400   {object} errorResponse
-//	@Failure     500   {object} errorResponse
-//	@Router      /api/v1/bots/telegram/activate [post]
-func (h *TelegramBotHandler) ActivateBot(c *gin.Context) {
-	token := c.Query("token")
-	chatID := c.Query("chat_id")
-
-	if token == "" {
-		c.JSON(http.StatusBadRequest, errorResponse{Error: "token is required"})
-		return
-	}
-
-	if chatID == "" {
-		c.JSON(http.StatusBadRequest, errorResponse{Error: "chat_id is required"})
-		return
-	}
-
-	// Активируем бота
-	if err := h.telegramBot.ActivateBotByChatID(c.Request.Context(), token, chatID); err != nil {
-		h.logger.Errorf("Error activating bot: %s", err)
-		c.JSON(http.StatusInternalServerError, errorResponse{Error: "failed to activate bot"})
-		return
-	}
-
-	c.JSON(http.StatusOK, gin.H{"success": true})
+	c.JSON(http.StatusOK, AddChatResponse{
+		Verified: true,
+		Message:  "",
+	})
 }
