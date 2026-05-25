@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/rand"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"strconv"
 	"strings"
@@ -11,16 +12,16 @@ import (
 
 	"github.com/Revachol/SpamBreaker_VK_back/internal/core/repository/interfaces"
 	"github.com/Revachol/SpamBreaker_VK_back/internal/domain"
+	"github.com/Revachol/SpamBreaker_VK_back/internal/domain/expectation"
 	"github.com/Revachol/SpamBreaker_VK_back/pkg/logger"
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
 	"github.com/google/uuid"
 )
 
-// TelegramBotUseCase реализует бизнес-логику для управления Telegram ботами.
 type TelegramBotUseCase struct {
 	applicationRepo         interfaces.ApplicationRepository
 	applicationSettingsRepo interfaces.ApplicationSettingsRepository
-	moderatorRepo           interfaces.ModeratorRepository
+	moderatorAccountRepo    interfaces.ModeratorAccountRepository // прямая зависимость от репозитория
 	telegramAPI             *tgbotapi.BotAPI
 	logger                  logger.Log
 }
@@ -28,14 +29,14 @@ type TelegramBotUseCase struct {
 func NewTelegramBotUseCase(
 	applicationRepo interfaces.ApplicationRepository,
 	applicationSettingsRepo interfaces.ApplicationSettingsRepository,
-	moderatorRepo interfaces.ModeratorRepository,
+	moderatorAccountRepo interfaces.ModeratorAccountRepository,
 	telegramAPI *tgbotapi.BotAPI,
 	l logger.Log,
 ) *TelegramBotUseCase {
 	return &TelegramBotUseCase{
 		applicationRepo:         applicationRepo,
 		applicationSettingsRepo: applicationSettingsRepo,
-		moderatorRepo:           moderatorRepo,
+		moderatorAccountRepo:    moderatorAccountRepo,
 		telegramAPI:             telegramAPI,
 		logger:                  l,
 	}
@@ -43,14 +44,11 @@ func NewTelegramBotUseCase(
 
 // GenerateToken генерирует новый токен для активации Telegram бота.
 func (uc *TelegramBotUseCase) GenerateToken(ctx context.Context, ownerID string) (*domain.Application, error) {
-	// Генерируем уникальный токен
 	token, err := generateToken()
 	if err != nil {
-		uc.logger.Errorf("Error generating token: %s", err)
 		return nil, err
 	}
 
-	// Создаем новое приложение для Telegram бота
 	app := &domain.Application{
 		ID:        uuid.New().String(),
 		Name:      "Telegram Bot",
@@ -62,13 +60,10 @@ func (uc *TelegramBotUseCase) GenerateToken(ctx context.Context, ownerID string)
 		UpdatedAt: time.Now().UTC(),
 	}
 
-	// Сохраняем приложение
 	if err := uc.applicationRepo.Create(ctx, app); err != nil {
-		uc.logger.Errorf("Error creating application: %s", err)
 		return nil, err
 	}
 
-	// Создаем настройки по умолчанию
 	settings := &domain.ApplicationSettings{
 		ID:                uuid.New().String(),
 		ApplicationID:     app.ID,
@@ -82,8 +77,6 @@ func (uc *TelegramBotUseCase) GenerateToken(ctx context.Context, ownerID string)
 	}
 
 	if err := uc.applicationSettingsRepo.Create(ctx, settings); err != nil {
-		uc.logger.Errorf("Error creating application settings: %s", err)
-		// Откатываем создание приложения
 		_ = uc.applicationRepo.Delete(ctx, app.ID)
 		return nil, err
 	}
@@ -91,9 +84,53 @@ func (uc *TelegramBotUseCase) GenerateToken(ctx context.Context, ownerID string)
 	return app, nil
 }
 
-// ActivateBotByChatID активирует бота по ID чата (вызывается Telegram ботом).
-func (uc *TelegramBotUseCase) ActivateBotByChatID(ctx context.Context, token, chatID string) error {
-	return uc.ActivateBot(ctx, token, chatID)
+// ActivateBotByChatID активирует бота в чате, проверяя права верифицированного пользователя.
+func (uc *TelegramBotUseCase) ActivateBotByChatID(ctx context.Context, token, chatID string, fromUserID int64) error {
+	// 1. Проверяем, что пользователь верифицирован через moderator_account
+	accountID := strconv.FormatInt(fromUserID, 10)
+	acc, err := uc.moderatorAccountRepo.FindVerifiedByPlatformAndAccountID(ctx, "telegram", accountID)
+	if err != nil {
+		if errors.Is(err, expectation.ErrNotFound) {
+			return fmt.Errorf("user not verified")
+		}
+		return fmt.Errorf("check verification: %w", err)
+	}
+	moderatorID := acc.ModeratorID
+
+	// 2. Получаем приложение по токену
+	app, err := uc.applicationRepo.GetByToken(ctx, token)
+	if err != nil {
+		return err
+	}
+	if app == nil {
+		return nil // не раскрываем информацию
+	}
+	if app.OwnerID != moderatorID {
+		return fmt.Errorf("only the bot owner can activate it")
+	}
+
+	app.ExternalID = chatID
+	app.Status = "active"
+	app.VerifiedAt = time.Now().UTC()
+	app.UpdatedAt = time.Now().UTC()
+	return uc.applicationRepo.Update(ctx, app)
+}
+
+// HandleBotAddedToChat вызывается при событии my_chat_member (бот добавлен в группу).
+func (uc *TelegramBotUseCase) HandleBotAddedToChat(ctx context.Context, chatID int64, fromUserID int64) error {
+	// Проверяем верификацию добавившего
+	accountID := strconv.FormatInt(fromUserID, 10)
+	_, err := uc.moderatorAccountRepo.FindVerifiedByPlatformAndAccountID(ctx, "telegram", accountID)
+	if err != nil {
+		if errors.Is(err, expectation.ErrNotFound) {
+			return fmt.Errorf("user not verified")
+		}
+		return fmt.Errorf("check verification: %w", err)
+	}
+
+	// Проверка прав администратора в чате выполняется ботом до вызова этого метода.
+	// Здесь можно добавить логику создания связи модератор-чат через отдельную таблицу.
+	return nil
 }
 
 // GetByToken получает приложение по токену.
@@ -111,144 +148,36 @@ func (uc *TelegramBotUseCase) UpdateSettings(ctx context.Context, settings *doma
 	return uc.applicationSettingsRepo.Update(ctx, settings)
 }
 
-// ActivateBot активирует бота по внешнему ID чата.
-func (uc *TelegramBotUseCase) ActivateBot(ctx context.Context, token, chatID string) error {
-	// Получаем приложение по токену
-	app, err := uc.applicationRepo.GetByToken(ctx, token)
-	if err != nil {
-		uc.logger.Errorf("Error getting application by token: %s", err)
-		return err
-	}
-
-	if app == nil {
-		uc.logger.Warnf("Application not found for token: %s", token)
-		return nil // Не возвращаем ошибку, чтобы не раскрывать информацию
-	}
-
-	// Обновляем приложение
-	app.ExternalID = chatID
-	app.Status = "active"
-	app.VerifiedAt = time.Now().UTC()
-	app.UpdatedAt = time.Now().UTC()
-
-	if err := uc.applicationRepo.Update(ctx, app); err != nil {
-		uc.logger.Errorf("Error updating application: %s", err)
-		return err
-	}
-
-	return nil
-}
-
 // DisableBot деактивирует бота.
 func (uc *TelegramBotUseCase) DisableBot(ctx context.Context, applicationID string) error {
-	// Получаем приложение
 	app, err := uc.applicationRepo.GetByID(ctx, applicationID)
 	if err != nil {
-		uc.logger.Errorf("Error getting application: %s", err)
 		return err
 	}
-
 	if app == nil {
-		uc.logger.Warnf("Application not found: %s", applicationID)
 		return nil
 	}
-
-	// Обновляем статус
 	app.Status = "inactive"
 	app.UpdatedAt = time.Now().UTC()
-
-	if err := uc.applicationRepo.Update(ctx, app); err != nil {
-		uc.logger.Errorf("Error updating application: %s", err)
-		return err
-	}
-
-	return nil
+	return uc.applicationRepo.Update(ctx, app)
 }
 
-// ListBots возвращает список ботов владельца.
+// ListBots возвращает ботов владельца.
 func (uc *TelegramBotUseCase) ListBots(ctx context.Context, ownerID string) ([]*domain.Application, error) {
 	return uc.applicationRepo.ListByOwner(ctx, ownerID)
 }
 
-// ListAccessibleBots возвращает боты, к которым у пользователя есть доступ (владелец или соадмин).
+// ListAccessibleBots возвращает боты, доступные пользователю.
 func (uc *TelegramBotUseCase) ListAccessibleBots(ctx context.Context, userID string) ([]*domain.Application, error) {
 	return uc.applicationRepo.ListByOwnerOrAdmin(ctx, userID)
 }
 
-// AddAdmin добавляет соадмина по username. Только владелец может добавлять.
-func (uc *TelegramBotUseCase) AddAdmin(ctx context.Context, ownerID, appID, targetUsername string) (*domain.Moderator, error) {
-	app, err := uc.applicationRepo.GetByID(ctx, appID)
-	if err != nil {
-		return nil, err
-	}
-	if app == nil || app.OwnerID != ownerID {
-		return nil, fmt.Errorf("forbidden")
-	}
-
-	target, err := uc.moderatorRepo.GetByUsername(ctx, targetUsername)
-	if err != nil {
-		return nil, err
-	}
-	if target == nil {
-		return nil, fmt.Errorf("user not found")
-	}
-	if target.ID == ownerID {
-		return nil, fmt.Errorf("cannot add yourself as admin")
-	}
-
-	if err := uc.applicationRepo.AddAdmin(ctx, appID, target.ID); err != nil {
-		return nil, err
-	}
-	return target, nil
-}
-
-// RemoveAdmin удаляет соадмина по username. Только владелец может удалять.
-func (uc *TelegramBotUseCase) RemoveAdmin(ctx context.Context, ownerID, appID, targetUsername string) error {
-	app, err := uc.applicationRepo.GetByID(ctx, appID)
-	if err != nil {
-		return err
-	}
-	if app == nil || app.OwnerID != ownerID {
-		return fmt.Errorf("forbidden")
-	}
-
-	target, err := uc.moderatorRepo.GetByUsername(ctx, targetUsername)
-	if err != nil {
-		return err
-	}
-	if target == nil {
-		return fmt.Errorf("user not found")
-	}
-
-	return uc.applicationRepo.RemoveAdmin(ctx, appID, target.ID)
-}
-
-// GetAdmins возвращает список соадминов приложения.
-func (uc *TelegramBotUseCase) GetAdmins(ctx context.Context, appID string) ([]*domain.Moderator, error) {
-	ids, err := uc.applicationRepo.ListAdminIDs(ctx, appID)
-	if err != nil {
-		return nil, err
-	}
-
-	var admins []*domain.Moderator
-	for _, id := range ids {
-		mod, err := uc.moderatorRepo.GetByID(ctx, id)
-		if err != nil {
-			return nil, err
-		}
-		if mod != nil {
-			admins = append(admins, mod)
-		}
-	}
-	return admins, nil
-}
-
-// GetByChatID возвращает приложение по внешнему ID чата (Telegram chat ID).
+// GetByChatID возвращает приложение по внешнему ID чата.
 func (uc *TelegramBotUseCase) GetByChatID(ctx context.Context, chatID string) (*domain.Application, error) {
 	return uc.applicationRepo.GetByExternalIDAndPlatform(ctx, chatID, "telegram")
 }
 
-// IsChatActive проверяет, зарегистрирован ли чат в системе.
+// IsChatActive проверяет, активен ли чат.
 func (uc *TelegramBotUseCase) IsChatActive(ctx context.Context, chatID string) (bool, error) {
 	app, err := uc.applicationRepo.GetByExternalIDAndPlatform(ctx, chatID, "telegram")
 	if err != nil {
@@ -257,21 +186,25 @@ func (uc *TelegramBotUseCase) IsChatActive(ctx context.Context, chatID string) (
 	return app != nil && app.Status == "active", nil
 }
 
-// generateToken генерирует случайный токен.
-func generateToken() (string, error) {
-	bytes := make([]byte, 32)
-	if _, err := rand.Read(bytes); err != nil {
-		return "", err
+// IsUserAdminOfChat проверяет, является ли пользователь администратором или создателем чата.
+func (uc *TelegramBotUseCase) IsUserAdminOfChat(ctx context.Context, userID, chatID int64) (bool, error) {
+	config := tgbotapi.GetChatMemberConfig{
+		ChatConfigWithUser: tgbotapi.ChatConfigWithUser{
+			ChatID: chatID,
+			UserID: userID,
+		},
 	}
-	return hex.EncodeToString(bytes), nil
+	member, err := uc.telegramAPI.GetChatMember(config)
+	if err != nil {
+		return false, fmt.Errorf("getChatMember: %w", err)
+	}
+	return member.IsAdministrator() || member.IsCreator(), nil
 }
 
-// VerifyChat проверяет, что бот находится в указанном чате и имеет необходимые права.
-// chatID может быть числовым ID, @username или ссылкой https://t.me/username.
+// VerifyChat проверяет, что бот находится в чате и активирует его.
 func (uc *TelegramBotUseCase) VerifyChat(ctx context.Context, applicationID, chatID string) error {
 	app, err := uc.applicationRepo.GetByID(ctx, applicationID)
 	if err != nil {
-		uc.logger.Errorf("Error getting application: %s", err)
 		return err
 	}
 	if app == nil {
@@ -283,9 +216,7 @@ func (uc *TelegramBotUseCase) VerifyChat(ctx context.Context, applicationID, cha
 
 	switch {
 	case strings.HasPrefix(chatID, "https://t.me/"):
-		// Извлекаем username из ссылки
 		username := "@" + strings.TrimPrefix(chatID, "https://t.me/")
-		// Убираем возможные query-параметры
 		if idx := strings.IndexByte(username, '?'); idx != -1 {
 			username = username[:idx]
 		}
@@ -318,10 +249,13 @@ func (uc *TelegramBotUseCase) VerifyChat(ctx context.Context, applicationID, cha
 	app.VerifiedAt = time.Now().UTC()
 	app.UpdatedAt = time.Now().UTC()
 
-	if err := uc.applicationRepo.Update(ctx, app); err != nil {
-		uc.logger.Errorf("Error updating application: %s", err)
-		return err
-	}
+	return uc.applicationRepo.Update(ctx, app)
+}
 
-	return nil
+func generateToken() (string, error) {
+	bytes := make([]byte, 32)
+	if _, err := rand.Read(bytes); err != nil {
+		return "", err
+	}
+	return hex.EncodeToString(bytes), nil
 }
