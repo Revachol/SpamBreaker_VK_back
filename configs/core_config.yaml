@@ -13,6 +13,8 @@ app:
       - http://127.0.0.1:3010
       - http://localhost:3010
       - http://87.239.104.16:3010
+      - http://spambreaker.ru
+      - https://spambreaker.ru
 
   logger:
     level: TRACE
