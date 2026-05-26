@@ -13,6 +13,8 @@ app:
       - http://127.0.0.1:3010
       - http://localhost:3010
       - http://87.239.104.16:3010
+      - http://spambreaker.ru
+      - https://spambreaker.ru
 
   logger:
     level: TRACE
@@ -35,3 +37,9 @@ app:
     # Здесь указываем имя переменной — config.loadEnv подставит реальное значение.
     secret: JWT_SECRET
     ttl: 24h
+
+  telegram:
+    token: TELEGRAM_TOKEN
+
+  vk:
+    token: VK_TOKEN

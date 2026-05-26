@@ -201,4 +201,3 @@ class SpamFilter:
 
     def clear_history(self):
         self._history.clear()
-
