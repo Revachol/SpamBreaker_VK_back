@@ -19,6 +19,7 @@ Inappropriateness убрана.
   POST /classify        — одно сообщение
   POST /classify_batch  — список сообщений
   GET  /health
+  GET  /metrics
 """
 
 import torch
@@ -26,7 +27,9 @@ import torch.nn as nn
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel as PydanticBase
 from transformers import BertTokenizer, BertModel
-# from spam_filter import SpamFilter  # ВРЕМЕННО ОТКЛЮЧЁН — вернуть позже
+# from spam_filter import SpamFilter
+from prometheus_client import Counter, Histogram, generate_latest, CONTENT_TYPE_LATEST
+import time
 
 # ── Схемы (НЕ менялись — обратная совместимость) ────────────────────
 
@@ -61,6 +64,23 @@ HIDDEN_DIM = 768
 MLP_DIM = 128
 DROPOUT = 0.3                  # значение из обучения (в eval не влияет)
 DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
+
+# ── Метрики Prometheus ───────────────────────────────────────────────
+
+
+# Создаём метрики (глобальные)
+requests_total = Counter(
+    'http_requests_total',
+    'Total number of HTTP requests',
+    ['method', 'path', 'status', "service"]
+)
+request_duration = Histogram(
+    'http_request_duration_seconds',
+    'Duration of HTTP requests in seconds',
+    ['method', 'path', 'status', "service"],
+    buckets=(0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1, 2.5, 5, 10)
+)
 
 
 # ── Инициализация ───────────────────────────────────────────────────
@@ -151,7 +171,7 @@ def _classify_text(text: str) -> dict:
 
     # Степень токсичности (ПРЯМАЯ, не перевёрнутая)
     score = _toxicity_score(text)
-    label = "negative" if score > TOX_THRESHOLD else "neutral"
+    label = "negative" if score >= TOX_THRESHOLD else "neutral"
 
     sc = round(score, 4)
     return {

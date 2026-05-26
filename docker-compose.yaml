@@ -26,6 +26,8 @@ services:
       ML_HOST: ${ML_HOST}
       ML_PORT: ${ML_PORT}
       JWT_SECRET: ${JWT_SECRET}
+      VK_TOKEN: ${VK_TOKEN}
+      TELEGRAM_TOKEN: ${TELEGRAM_TOKEN}
     networks:
       - service-net
     healthcheck:

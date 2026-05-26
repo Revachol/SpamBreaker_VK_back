@@ -19,6 +19,7 @@ func NewRouter(
 	h *Handler,
 	ah *AuthHandler,
 	tbh *TelegramBotHandler,
+	vbh *VkBotHandler,
 	jwtManager *jwtpkg.Manager,
 	reg *prometheus.Registry,
 	cfg *config.Config,
@@ -51,6 +52,8 @@ func NewRouter(
 		bot.POST("/check", h.Check)
 		bot.POST("/bots/telegram/activate", tbh.ActivateBot)
 		bot.GET("/bots/telegram/internal/chat-active", tbh.IsChatActive)
+		bot.POST("/bots/vk/activate", vbh.ActivateBot)
+		bot.GET("/bots/vk/internal/chat-active", vbh.IsChatActive)
 	}
 
 	// Защищённые маршруты — требуют Bearer-токен.
@@ -60,6 +63,7 @@ func NewRouter(
 		v1.GET("/history", h.GetHistory)
 		v1.GET("/history/:id", h.GetRecord)
 		v1.GET("/bots/telegram/history", h.GetBotHistory)
+		v1.GET("/bots/vk/history", h.GetBotHistory)
 
 		// Telegram bot routes
 		telegram := v1.Group("/bots/telegram")
@@ -82,6 +86,20 @@ func NewRouter(
 				bot.POST("/admins", tbh.AddAdmin)
 				bot.DELETE("/admins/:username", tbh.RemoveAdmin)
 			}
+		}
+
+		// Telegram bot routes
+		vk := v1.Group("/bots/vk")
+		{
+			vk.GET("/token", vbh.GetToken)
+			vk.GET("/status", vbh.GetStatus)
+			vk.GET("/settings", vbh.GetSettings)
+			vk.POST("/settings", vbh.UpdateSettings)
+			vk.POST("/verify-chat", vbh.VerifyChat)
+			vk.POST("/disable", vbh.DisableBot)
+			vk.GET("/admins", vbh.GetAdmins)
+			vk.POST("/admins", vbh.AddAdmin)
+			vk.DELETE("/admins/:username", vbh.RemoveAdmin)
 		}
 	}
 
