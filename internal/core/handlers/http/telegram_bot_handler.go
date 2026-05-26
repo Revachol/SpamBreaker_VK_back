@@ -13,12 +13,13 @@ import (
 // TelegramBotHandler handles Telegram bot related HTTP requests.
 type TelegramBotHandler struct {
 	telegramBot *service.TelegramBotUseCase
+	moderation  *service.ModerationUseCase
 	logger      logger.Log
 }
 
 // NewTelegramBotHandler creates a new TelegramBotHandler.
-func NewTelegramBotHandler(telegramBot *service.TelegramBotUseCase, l logger.Log) *TelegramBotHandler {
-	return &TelegramBotHandler{telegramBot: telegramBot, logger: l}
+func NewTelegramBotHandler(telegramBot *service.TelegramBotUseCase, moderation *service.ModerationUseCase, l logger.Log) *TelegramBotHandler {
+	return &TelegramBotHandler{telegramBot: telegramBot, moderation: moderation, logger: l}
 }
 
 // ---------- DTOs ----------
@@ -592,6 +593,65 @@ func (h *TelegramBotHandler) RemoveAdmin(c *gin.Context) {
 		resp = append(resp, adminInfoResponse{ID: m.ID, Username: m.Username})
 	}
 	c.JSON(http.StatusOK, resp)
+}
+
+// GetHistory возвращает историю сообщений конкретного бота.
+// Доступно только владельцу или соадмину.
+func (h *TelegramBotHandler) GetHistory(c *gin.Context) {
+	uid, ok := userID(c)
+	if !ok {
+		return
+	}
+	botID := c.Param("botId")
+
+	if _, err := h.telegramBot.GetBot(c.Request.Context(), uid, botID); h.checkErr(c, err) {
+		return
+	}
+
+	limit := queryIntParam(c, "limit", 100)
+	offset := queryIntParam(c, "offset", 0)
+
+	records, err := h.moderation.GetHistoryByApp(c.Request.Context(), botID, limit, offset)
+	if err != nil {
+		h.logger.Errorf("GetHistory: %s", err)
+		c.JSON(http.StatusInternalServerError, errorResponse{Error: "failed to get history"})
+		return
+	}
+
+	type record struct {
+		ID         string             `json:"id"`
+		Label      string             `json:"label"`
+		Confidence float64            `json:"confidence"`
+		AllScores  map[string]float64 `json:"all_scores"`
+		CreatedAt  string             `json:"created_at"`
+	}
+
+	resp := make([]record, 0, len(records))
+	for _, r := range records {
+		resp = append(resp, record{
+			ID:         r.ID,
+			Label:      r.Verdict.Label,
+			Confidence: r.Verdict.Confidence,
+			AllScores:  r.Verdict.AllScores,
+			CreatedAt:  r.CreatedAt.Format(time.RFC3339),
+		})
+	}
+	c.JSON(http.StatusOK, resp)
+}
+
+func queryIntParam(c *gin.Context, key string, def int) int {
+	v := c.Query(key)
+	if v == "" {
+		return def
+	}
+	n := 0
+	for _, ch := range v {
+		if ch < '0' || ch > '9' {
+			return def
+		}
+		n = n*10 + int(ch-'0')
+	}
+	return n
 }
 
 // ---------- Public endpoints (called by the Telegram bot process, no JWT) ----------

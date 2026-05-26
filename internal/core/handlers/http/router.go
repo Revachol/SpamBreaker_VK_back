@@ -82,6 +82,7 @@ func NewRouter(
 				bot.POST("/settings", tbh.UpdateSettings)
 				bot.POST("/disable", tbh.DisableBot)
 				bot.POST("/verify-chat", tbh.VerifyChat)
+				bot.GET("/history", tbh.GetHistory)
 				bot.GET("/admins", tbh.GetAdmins)
 				bot.POST("/admins", tbh.AddAdmin)
 				bot.DELETE("/admins/:username", tbh.RemoveAdmin)
