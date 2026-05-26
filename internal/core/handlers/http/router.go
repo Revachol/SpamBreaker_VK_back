@@ -62,7 +62,6 @@ func NewRouter(
 	{
 		v1.GET("/history", h.GetHistory)
 		v1.GET("/history/:id", h.GetRecord)
-		v1.GET("/bots/telegram/history", h.GetBotHistory)
 		v1.GET("/bots/vk/history", h.GetBotHistory)
 
 		// Telegram bot routes
@@ -82,6 +81,7 @@ func NewRouter(
 				bot.POST("/settings", tbh.UpdateSettings)
 				bot.POST("/disable", tbh.DisableBot)
 				bot.POST("/verify-chat", tbh.VerifyChat)
+				bot.GET("/history", tbh.GetHistory)
 				bot.GET("/admins", tbh.GetAdmins)
 				bot.POST("/admins", tbh.AddAdmin)
 				bot.DELETE("/admins/:username", tbh.RemoveAdmin)
