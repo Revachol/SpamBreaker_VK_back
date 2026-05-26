@@ -24,8 +24,7 @@ Inappropriateness убрана.
 
 import torch
 import torch.nn as nn
-import torch.nn.functional as F
-from fastapi import FastAPI, HTTPException, Request, Response
+from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel as PydanticBase
 from transformers import BertTokenizer, BertModel
 # from spam_filter import SpamFilter
@@ -86,8 +85,7 @@ request_duration = Histogram(
 
 # ── Инициализация ───────────────────────────────────────────────────
 
-service = "Model"
-app = FastAPI(title="Toxicity Classifier")
+app = FastAPI(title="Toxicity Severity Classifier")
 
 tokenizer = BertTokenizer.from_pretrained(BASE_MODEL)
 body = BertModel.from_pretrained(BASE_MODEL).to(DEVICE)
@@ -187,26 +185,7 @@ def _classify_text(text: str) -> dict:
     }
 
 
-# ── Эндпоинты ────────────────────────────────────────────────────────
-
-
-@app.middleware("http")
-async def metrics_middleware(request: Request, call_next):
-    start = time.time()
-    response = await call_next(request)
-    duration = time.time() - start
-
-    endpoint = request.url.path
-    method = request.method
-    status = response.status_code
-
-    if endpoint == "/health" or endpoint == "/metrics":
-        return response
-    requests_total.labels(method=method, path=endpoint, status=status, service=service).inc()
-    request_duration.labels(method=method, path=endpoint, status=status, service=service).observe(duration)
-
-    return response
-
+# ── Эндпоинты ───────────────────────────────────────────────────────
 
 @app.post("/classify", response_model=ClassifyResponse)
 def classify(req: ClassifyRequest):
@@ -230,9 +209,4 @@ def classify_batch(req: BatchRequest):
 
 @app.get("/health")
 def health():
-    return {"status": "ok", "device": str(DEVICE)}
-
-
-@app.get("/metrics")
-def metrics():
-    return Response(content=generate_latest(), media_type=CONTENT_TYPE_LATEST)
+    return {"status": "ok", "device": str(DEVICE), "head": head_type}

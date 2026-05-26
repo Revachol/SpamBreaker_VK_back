@@ -62,21 +62,30 @@ func NewRouter(
 	{
 		v1.GET("/history", h.GetHistory)
 		v1.GET("/history/:id", h.GetRecord)
-		v1.GET("/bots/telegram/history", h.GetBotHistory)
 		v1.GET("/bots/vk/history", h.GetBotHistory)
 
 		// Telegram bot routes
 		telegram := v1.Group("/bots/telegram")
 		{
-			telegram.GET("/token", tbh.GetToken)
-			telegram.GET("/status", tbh.GetStatus)
-			telegram.GET("/settings", tbh.GetSettings)
-			telegram.POST("/settings", tbh.UpdateSettings)
-			telegram.POST("/verify-chat", tbh.VerifyChat)
-			telegram.POST("/disable", tbh.DisableBot)
-			telegram.GET("/admins", tbh.GetAdmins)
-			telegram.POST("/admins", tbh.AddAdmin)
-			telegram.DELETE("/admins/:username", tbh.RemoveAdmin)
+			telegram.GET("", tbh.ListBots)
+			telegram.POST("", tbh.CreateBot)
+
+			bot := telegram.Group("/:botId")
+			{
+				bot.GET("", tbh.GetBot)
+				bot.PUT("", tbh.RenameBot)
+				bot.DELETE("", tbh.DeleteBot)
+				bot.GET("/token", tbh.GetBotToken)
+				bot.GET("/status", tbh.GetBotStatus)
+				bot.GET("/settings", tbh.GetSettings)
+				bot.POST("/settings", tbh.UpdateSettings)
+				bot.POST("/disable", tbh.DisableBot)
+				bot.POST("/verify-chat", tbh.VerifyChat)
+				bot.GET("/history", tbh.GetHistory)
+				bot.GET("/admins", tbh.GetAdmins)
+				bot.POST("/admins", tbh.AddAdmin)
+				bot.DELETE("/admins/:username", tbh.RemoveAdmin)
+			}
 		}
 
 		// Telegram bot routes
