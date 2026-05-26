@@ -83,7 +83,7 @@ func Run() {
 	// 6. Transport layer.
 	handler := httphandler.NewHandler(moderationUC, telegramBotUC, app.logger)
 	authHandler := httphandler.NewAuthHandler(authUC, app.logger)
-	telegramBotHandler := httphandler.NewTelegramBotHandler(telegramBotUC, app.logger)
+	telegramBotHandler := httphandler.NewTelegramBotHandler(telegramBotUC, moderationUC, app.logger)
 	vkBotHandler := httphandler.NewVkBotHandler(vkBotUC, app.logger)
 	router := httphandler.NewRouter(
 		handler,

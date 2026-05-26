@@ -62,7 +62,6 @@ func NewRouter(
 	{
 		v1.GET("/history", h.GetHistory)
 		v1.GET("/history/:id", h.GetRecord)
-		v1.GET("/bots/telegram/history", h.GetBotHistory)
 		v1.GET("/bots/vk/history", h.GetBotHistory)
 
 		// Telegram bot routes
