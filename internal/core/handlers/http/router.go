@@ -52,6 +52,8 @@ func NewRouter(
 		bot.POST("/check", h.Check)
 		bot.POST("/bots/telegram/activate", tbh.ActivateBot)
 		bot.GET("/bots/telegram/internal/chat-active", tbh.IsChatActive)
+		bot.POST("/bots/vk/activate", vbh.ActivateBot)
+		bot.GET("/bots/vk/internal/chat-active", vbh.IsChatActive)
 	}
 
 	// Защищённые маршруты — требуют Bearer-токен.
@@ -61,6 +63,7 @@ func NewRouter(
 		v1.GET("/history", h.GetHistory)
 		v1.GET("/history/:id", h.GetRecord)
 		v1.GET("/bots/telegram/history", h.GetBotHistory)
+		v1.GET("/bots/vk/history", h.GetBotHistory)
 
 		// Telegram bot routes
 		telegram := v1.Group("/bots/telegram")
