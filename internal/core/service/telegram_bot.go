@@ -41,19 +41,21 @@ func NewTelegramBotUseCase(
 	}
 }
 
-// GenerateToken генерирует новый токен для активации Telegram бота.
-func (uc *TelegramBotUseCase) GenerateToken(ctx context.Context, ownerID string) (*domain.Application, error) {
-	// Генерируем уникальный токен
+// CreateBot создаёт нового Telegram-бота с заданным именем.
+func (uc *TelegramBotUseCase) CreateBot(ctx context.Context, ownerID, name string) (*domain.Application, error) {
 	token, err := generateToken()
 	if err != nil {
 		uc.logger.Errorf("Error generating token: %s", err)
 		return nil, err
 	}
 
-	// Создаем новое приложение для Telegram бота
+	if name == "" {
+		name = "Telegram Bot"
+	}
+
 	app := &domain.Application{
 		ID:        uuid.New().String(),
-		Name:      "Telegram Bot",
+		Name:      name,
 		Platform:  "telegram",
 		Token:     token,
 		OwnerID:   ownerID,
@@ -62,13 +64,11 @@ func (uc *TelegramBotUseCase) GenerateToken(ctx context.Context, ownerID string)
 		UpdatedAt: time.Now().UTC(),
 	}
 
-	// Сохраняем приложение
 	if err := uc.applicationRepo.Create(ctx, app); err != nil {
 		uc.logger.Errorf("Error creating application: %s", err)
 		return nil, err
 	}
 
-	// Создаем настройки по умолчанию
 	settings := &domain.ApplicationSettings{
 		ID:                uuid.New().String(),
 		ApplicationID:     app.ID,
@@ -83,12 +83,88 @@ func (uc *TelegramBotUseCase) GenerateToken(ctx context.Context, ownerID string)
 
 	if err := uc.applicationSettingsRepo.Create(ctx, settings); err != nil {
 		uc.logger.Errorf("Error creating application settings: %s", err)
-		// Откатываем создание приложения
 		_ = uc.applicationRepo.Delete(ctx, app.ID)
 		return nil, err
 	}
 
 	return app, nil
+}
+
+// GenerateToken генерирует новый токен для активации Telegram бота.
+// Deprecated: используйте CreateBot.
+func (uc *TelegramBotUseCase) GenerateToken(ctx context.Context, ownerID string) (*domain.Application, error) {
+	return uc.CreateBot(ctx, ownerID, "Telegram Bot")
+}
+
+// ListTelegramBots возвращает только Telegram-ботов владельца.
+func (uc *TelegramBotUseCase) ListTelegramBots(ctx context.Context, ownerID string) ([]*domain.Application, error) {
+	apps, err := uc.applicationRepo.ListByOwner(ctx, ownerID)
+	if err != nil {
+		return nil, err
+	}
+	var result []*domain.Application
+	for _, a := range apps {
+		if a.Platform == "telegram" {
+			result = append(result, a)
+		}
+	}
+	return result, nil
+}
+
+// GetBot возвращает конкретного бота. Проверяет, что пользователь — владелец или соадмин.
+func (uc *TelegramBotUseCase) GetBot(ctx context.Context, userID, botID string) (*domain.Application, error) {
+	app, err := uc.applicationRepo.GetByID(ctx, botID)
+	if err != nil {
+		return nil, err
+	}
+	if app == nil || app.Platform != "telegram" {
+		return nil, fmt.Errorf("bot not found")
+	}
+	if app.OwnerID == userID {
+		return app, nil
+	}
+	adminIDs, err := uc.applicationRepo.ListAdminIDs(ctx, botID)
+	if err != nil {
+		return nil, err
+	}
+	for _, id := range adminIDs {
+		if id == userID {
+			return app, nil
+		}
+	}
+	return nil, fmt.Errorf("forbidden")
+}
+
+// DeleteBot удаляет бота. Только владелец может удалять.
+func (uc *TelegramBotUseCase) DeleteBot(ctx context.Context, ownerID, botID string) error {
+	app, err := uc.applicationRepo.GetByID(ctx, botID)
+	if err != nil {
+		return err
+	}
+	if app == nil || app.Platform != "telegram" {
+		return fmt.Errorf("bot not found")
+	}
+	if app.OwnerID != ownerID {
+		return fmt.Errorf("forbidden")
+	}
+	return uc.applicationRepo.Delete(ctx, botID)
+}
+
+// RenameBot переименовывает бота. Только владелец может переименовывать.
+func (uc *TelegramBotUseCase) RenameBot(ctx context.Context, ownerID, botID, name string) error {
+	app, err := uc.applicationRepo.GetByID(ctx, botID)
+	if err != nil {
+		return err
+	}
+	if app == nil || app.Platform != "telegram" {
+		return fmt.Errorf("bot not found")
+	}
+	if app.OwnerID != ownerID {
+		return fmt.Errorf("forbidden")
+	}
+	app.Name = name
+	app.UpdatedAt = time.Now().UTC()
+	return uc.applicationRepo.Update(ctx, app)
 }
 
 // ActivateBotByChatID активирует бота по ID чата (вызывается Telegram ботом).
