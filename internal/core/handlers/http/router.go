@@ -19,7 +19,7 @@ func NewRouter(
 	bh *BotHandler,
 	ah *AuthHandler,
 	mh *ModeratorHandler,
-	tbh *TelegramBotHandler,
+	tbh *BotManageHandler,
 	vbh *VkBotHandler,
 	jwtManager *jwtpkg.Manager,
 	reg *prometheus.Registry,
@@ -48,13 +48,13 @@ func NewRouter(
 	}
 
 	// Публичные маршруты бота — вызываются Telegram-ботом без JWT.
-	bot := r.Group("/api/v1/bot")
+	bot := r.Group("/api/v1/bot/:service")
 	{
-		bot.POST("/check", bh.Check)
-		bot.POST("/chat/active", bh.ActivateBot)
+		bot.POST("/check", bh.Check) // check message
 		bot.GET("/chat/active", bh.GetVerificationStatus)
-		bot.POST("/chat/add", bh.ActivateBot)
-		bot.POST("/user/active", bh.VerifyUserToken)
+		bot.POST("/chat/active", bh.ActivateAddChat) // Add bot to chat
+		bot.DELETE("/chat/active", bh.DeactivateBot) // Del bot to chat
+		bot.POST("/active", bh.VerifyUserToken)      // Verify user
 	}
 
 	// Защищённые маршруты — требуют Bearer-токен.
@@ -62,13 +62,13 @@ func NewRouter(
 	v1.Use(JWTMiddleware(jwtManager))
 	{
 		v1.GET("/history", bh.GetHistory)
-		v1.GET("/history/:id", bh.GetRecord)
+		v1.GET("/history/:id", bh.GetHistoryRecord)
 
 		user := v1.Group("/user")
 		{
 			user.GET("/", mh.GetAdmins)
 			user.POST("/", mh.AddAdmin)
-			user.POST("/verify", mh.InitiateVerification)
+			user.POST("/:service/verify", mh.InitiateVerification)
 			user.DELETE("/:username", mh.RemoveAdmin)
 		}
 
@@ -76,25 +76,10 @@ func NewRouter(
 		telegram := v1.Group("/bots/telegram")
 		{
 			telegram.GET("/history", bh.GetBotHistory)
-			telegram.GET("/token", tbh.GetToken)
 			telegram.GET("/status", tbh.GetStatus)
 			telegram.GET("/settings", tbh.GetSettings)
 			telegram.POST("/settings", tbh.UpdateSettings)
 			telegram.POST("/disable", tbh.DisableBot)
-		}
-
-		// Telegram bot routes
-		vk := v1.Group("/bots/vk")
-		{
-			vk.GET("/token", vbh.GetToken)
-			vk.GET("/status", vbh.GetStatus)
-			vk.GET("/settings", vbh.GetSettings)
-			vk.POST("/settings", vbh.UpdateSettings)
-			vk.POST("/verify-chat", vbh.VerifyChat)
-			vk.POST("/disable", vbh.DisableBot)
-			vk.GET("/admins", vbh.GetAdmins)
-			vk.POST("/admins", vbh.AddAdmin)
-			vk.DELETE("/admins/:username", vbh.RemoveAdmin)
 		}
 	}
 

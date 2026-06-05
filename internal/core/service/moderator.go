@@ -88,8 +88,7 @@ func (s *ModeratorService) InitiateVerification(
 }
 
 // VerifyTelegramAccount подтверждает Telegram-аккаунт.
-func (s *ModeratorService) VerifyTelegramAccount(ctx context.Context, token string, fromUserID int64) error {
-	accountID := fmt.Sprintf("%d", fromUserID)
+func (s *ModeratorService) VerifyTelegramAccount(ctx context.Context, platform, token string, accountID string) error {
 	account, err := s.moderatorAccountRepo.FindByVerificationToken(ctx, token)
 	if err != nil {
 		if errors.Is(err, expectation.ErrNotFound) {
@@ -97,11 +96,11 @@ func (s *ModeratorService) VerifyTelegramAccount(ctx context.Context, token stri
 		}
 		return err
 	}
-	if account.Platform != "telegram" {
+	if account.Platform != platform {
 		return errors.New("invalid platform")
 	}
 	if account.AccountID != accountID {
-		return errors.New("token is for another telegram user")
+		return errors.New("token is for another account")
 	}
 	if account.VerifiedAt != nil {
 		return errors.New("account already verified")
@@ -114,13 +113,20 @@ func (s *ModeratorService) VerifyTelegramAccount(ctx context.Context, token stri
 
 // GetModeratorIDByVerifiedTelegramID возвращает ID модератора, если указанный Telegram ID верифицирован.
 func (s *ModeratorService) GetModeratorIDByVerifiedTelegramID(ctx context.Context, telegramID int64) (string, error) {
-	accountID := fmt.Sprintf("%d", telegramID)
-	account, err := s.moderatorAccountRepo.FindVerifiedByPlatformAndAccountID(ctx, "telegram", accountID)
+	return s.GetModeratorIDByVerifiedAccount(ctx, "telegram", fmt.Sprintf("%d", telegramID))
+}
+
+// GetModeratorIDByVerifiedAccount возвращает ID модератора, если платформенный аккаунт верифицирован.
+func (s *ModeratorService) GetModeratorIDByVerifiedAccount(ctx context.Context, platform, accountID string) (string, error) {
+	account, err := s.moderatorAccountRepo.FindVerifiedByPlatformAndAccountID(ctx, platform, accountID)
 	if err != nil {
 		if errors.Is(err, expectation.ErrNotFound) {
 			return "", expectation.ErrNotVerified
 		}
 		return "", err
+	}
+	if account == nil {
+		return "", expectation.ErrNotVerified
 	}
 	return account.ModeratorID, nil
 }

@@ -13,14 +13,14 @@ import (
 // ModeratorHandler отвечает за верификацию платформенных аккаунтов модератора.
 type ModeratorHandler struct {
 	moderatorService *service.ModeratorService
-	telegramBot      *service.TelegramBotUseCase
+	telegramBot      *service.BotUseCase
 	logger           logger.Log
 }
 
 // NewModeratorHandler создаёт новый ModeratorHandler.
 func NewModeratorHandler(
 	moderatorService *service.ModeratorService,
-	telegramBot *service.TelegramBotUseCase,
+	telegramBot *service.BotUseCase,
 	l logger.Log,
 ) *ModeratorHandler {
 	return &ModeratorHandler{

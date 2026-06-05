@@ -79,20 +79,20 @@ func Run() {
 	modAccService := service.NewModeratorService(moderatorRepo, modAccRepo, applicationRepo, app.logger)
 	moderationUC := service.NewModerationUseCase(mlClient, messageRepo, app.logger)
 	authUC := service.NewAuthUseCase(moderatorRepo, jwtManager, app.logger)
-	telegramBotUC := service.NewTelegramBotUseCase(applicationRepo, applicationSettingsRepo, modAccRepo, telegramAPI, app.logger)
+	botUC := service.NewBotUseCase(applicationRepo, applicationSettingsRepo, modAccRepo, telegramAPI, app.logger)
 	vkBotUC := service.NewVkBotUseCase(applicationRepo, applicationSettingsRepo, moderatorRepo, vk, app.logger)
 
 	// 6. Transport layer.
-	handler := httphandler.NewBotHandler(moderationUC, telegramBotUC, modAccService, app.logger)
+	handler := httphandler.NewBotHandler(moderationUC, botUC, modAccService, app.logger)
 	authHandler := httphandler.NewAuthHandler(authUC, app.logger)
-	moderHandler := httphandler.NewModeratorHandler(modAccService, telegramBotUC, app.logger)
-	telegramBotHandler := httphandler.NewTelegramBotHandler(telegramBotUC, app.logger)
+	moderHandler := httphandler.NewModeratorHandler(modAccService, botUC, app.logger)
+	botHandler := httphandler.NewBotManageHandler(botUC, app.logger)
 	vkBotHandler := httphandler.NewVkBotHandler(vkBotUC, app.logger)
 	router := httphandler.NewRouter(
 		handler,
 		authHandler,
 		moderHandler,
-		telegramBotHandler,
+		botHandler,
 		vkBotHandler,
 		jwtManager,
 		app.registry,

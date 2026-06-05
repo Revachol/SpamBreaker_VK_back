@@ -18,22 +18,22 @@ import (
 	"github.com/google/uuid"
 )
 
-type TelegramBotUseCase struct {
+type BotUseCase struct {
 	applicationRepo         interfaces.ApplicationRepository
 	applicationSettingsRepo interfaces.ApplicationSettingsRepository
-	moderatorAccountRepo    interfaces.ModeratorAccountRepository // прямая зависимость от репозитория
+	moderatorAccountRepo    interfaces.ModeratorAccountRepository
 	telegramAPI             *tgbotapi.BotAPI
 	logger                  logger.Log
 }
 
-func NewTelegramBotUseCase(
+func NewBotUseCase(
 	applicationRepo interfaces.ApplicationRepository,
 	applicationSettingsRepo interfaces.ApplicationSettingsRepository,
 	moderatorAccountRepo interfaces.ModeratorAccountRepository,
 	telegramAPI *tgbotapi.BotAPI,
 	l logger.Log,
-) *TelegramBotUseCase {
-	return &TelegramBotUseCase{
+) *BotUseCase {
+	return &BotUseCase{
 		applicationRepo:         applicationRepo,
 		applicationSettingsRepo: applicationSettingsRepo,
 		moderatorAccountRepo:    moderatorAccountRepo,
@@ -43,7 +43,7 @@ func NewTelegramBotUseCase(
 }
 
 // GenerateToken генерирует новый токен для активации Telegram бота.
-func (uc *TelegramBotUseCase) GenerateToken(ctx context.Context, ownerID string) (*domain.Application, error) {
+func (uc *BotUseCase) GenerateToken(ctx context.Context, ownerID string) (*domain.Application, error) {
 	token, err := generateToken()
 	if err != nil {
 		return nil, err
@@ -85,7 +85,7 @@ func (uc *TelegramBotUseCase) GenerateToken(ctx context.Context, ownerID string)
 }
 
 // ActivateBotByChatID активирует бота в чате, проверяя права верифицированного пользователя.
-func (uc *TelegramBotUseCase) ActivateBotByChatID(ctx context.Context, token, chatID string, fromUserID int64) error {
+func (uc *BotUseCase) ActivateBotByChatID(ctx context.Context, token, chatID string, fromUserID int64) error {
 	// 1. Проверяем, что пользователь верифицирован через moderator_account
 	accountID := strconv.FormatInt(fromUserID, 10)
 	acc, err := uc.moderatorAccountRepo.FindVerifiedByPlatformAndAccountID(ctx, "telegram", accountID)
@@ -116,8 +116,71 @@ func (uc *TelegramBotUseCase) ActivateBotByChatID(ctx context.Context, token, ch
 	return uc.applicationRepo.Update(ctx, app)
 }
 
+// AddChat создаёт приложение для подключённого чата или реактивирует уже существующее.
+func (uc *BotUseCase) AddChat(ctx context.Context, moderatorID, platform, chatID string) (*domain.Application, error) {
+	app, err := uc.applicationRepo.GetByExternalIDAndPlatform(ctx, platform, chatID)
+	if err != nil {
+		return nil, err
+	}
+	if app != nil {
+		if app.OwnerID != "" && app.OwnerID != moderatorID {
+			return nil, fmt.Errorf("chat already connected")
+		}
+		app.OwnerID = moderatorID
+		app.Status = "active"
+		app.UpdatedAt = time.Now().UTC()
+		if app.VerifiedAt.IsZero() {
+			app.VerifiedAt = time.Now().UTC()
+		}
+		if err := uc.applicationRepo.Update(ctx, app); err != nil {
+			return nil, err
+		}
+		return app, nil
+	}
+
+	token, err := generateToken()
+	if err != nil {
+		return nil, err
+	}
+
+	now := time.Now().UTC()
+	app = &domain.Application{
+		ID:         uuid.New().String(),
+		Name:       botApplicationName(platform, chatID),
+		Platform:   platform,
+		ExternalID: chatID,
+		Token:      token,
+		OwnerID:    moderatorID,
+		Status:     "active",
+		VerifiedAt: now,
+		CreatedAt:  now,
+		UpdatedAt:  now,
+	}
+	if err := uc.applicationRepo.Create(ctx, app); err != nil {
+		return nil, err
+	}
+
+	settings := &domain.ApplicationSettings{
+		ID:                uuid.New().String(),
+		ApplicationID:     app.ID,
+		ToxicityThreshold: 70,
+		ActionOnSpam:      "notify",
+		AutoModerate:      false,
+		NotifyModerator:   true,
+		AllowedLanguages:  nil,
+		CreatedAt:         now,
+		UpdatedAt:         now,
+	}
+	if err := uc.applicationSettingsRepo.Create(ctx, settings); err != nil {
+		_ = uc.applicationRepo.Delete(ctx, app.ID)
+		return nil, err
+	}
+
+	return app, nil
+}
+
 // HandleBotAddedToChat вызывается при событии my_chat_member (бот добавлен в группу).
-func (uc *TelegramBotUseCase) HandleBotAddedToChat(ctx context.Context, chatID int64, fromUserID int64) error {
+func (uc *BotUseCase) HandleBotAddedToChat(ctx context.Context, chatID int64, fromUserID int64) error {
 	// Проверяем верификацию добавившего
 	accountID := strconv.FormatInt(fromUserID, 10)
 	_, err := uc.moderatorAccountRepo.FindVerifiedByPlatformAndAccountID(ctx, "telegram", accountID)
@@ -134,22 +197,22 @@ func (uc *TelegramBotUseCase) HandleBotAddedToChat(ctx context.Context, chatID i
 }
 
 // GetByToken получает приложение по токену.
-func (uc *TelegramBotUseCase) GetByToken(ctx context.Context, token string) (*domain.Application, error) {
+func (uc *BotUseCase) GetByToken(ctx context.Context, token string) (*domain.Application, error) {
 	return uc.applicationRepo.GetByToken(ctx, token)
 }
 
 // GetSettings получает настройки приложения.
-func (uc *TelegramBotUseCase) GetSettings(ctx context.Context, applicationID string) (*domain.ApplicationSettings, error) {
+func (uc *BotUseCase) GetSettings(ctx context.Context, applicationID string) (*domain.ApplicationSettings, error) {
 	return uc.applicationSettingsRepo.GetByApplicationID(ctx, applicationID)
 }
 
 // UpdateSettings обновляет настройки приложения.
-func (uc *TelegramBotUseCase) UpdateSettings(ctx context.Context, settings *domain.ApplicationSettings) error {
+func (uc *BotUseCase) UpdateSettings(ctx context.Context, settings *domain.ApplicationSettings) error {
 	return uc.applicationSettingsRepo.Update(ctx, settings)
 }
 
 // DisableBot деактивирует бота.
-func (uc *TelegramBotUseCase) DisableBot(ctx context.Context, applicationID string) error {
+func (uc *BotUseCase) DisableBot(ctx context.Context, applicationID string) error {
 	app, err := uc.applicationRepo.GetByID(ctx, applicationID)
 	if err != nil {
 		return err
@@ -163,23 +226,23 @@ func (uc *TelegramBotUseCase) DisableBot(ctx context.Context, applicationID stri
 }
 
 // ListBots возвращает ботов владельца.
-func (uc *TelegramBotUseCase) ListBots(ctx context.Context, ownerID string) ([]*domain.Application, error) {
+func (uc *BotUseCase) ListBots(ctx context.Context, ownerID string) ([]*domain.Application, error) {
 	return uc.applicationRepo.ListByOwner(ctx, ownerID)
 }
 
 // ListAccessibleBots возвращает боты, доступные пользователю.
-func (uc *TelegramBotUseCase) ListAccessibleBots(ctx context.Context, userID string) ([]*domain.Application, error) {
+func (uc *BotUseCase) ListAccessibleBots(ctx context.Context, userID string) ([]*domain.Application, error) {
 	return uc.applicationRepo.ListByOwnerOrAdmin(ctx, userID)
 }
 
 // GetByChatID возвращает приложение по внешнему ID чата.
-func (uc *TelegramBotUseCase) GetByChatID(ctx context.Context, chatID string) (*domain.Application, error) {
-	return uc.applicationRepo.GetByExternalIDAndPlatform(ctx, chatID, "telegram")
+func (uc *BotUseCase) GetByChatID(ctx context.Context, platform, chatID string) (*domain.Application, error) {
+	return uc.applicationRepo.GetByExternalIDAndPlatform(ctx, platform, chatID)
 }
 
 // IsChatActive проверяет, активен ли чат.
-func (uc *TelegramBotUseCase) IsChatActive(ctx context.Context, chatID string) (bool, error) {
-	app, err := uc.applicationRepo.GetByExternalIDAndPlatform(ctx, chatID, "telegram")
+func (uc *BotUseCase) IsChatActive(ctx context.Context, platform, chatID string) (bool, error) {
+	app, err := uc.applicationRepo.GetByExternalIDAndPlatform(ctx, platform, chatID)
 	if err != nil {
 		return false, err
 	}
@@ -187,7 +250,7 @@ func (uc *TelegramBotUseCase) IsChatActive(ctx context.Context, chatID string) (
 }
 
 // IsUserAdminOfChat проверяет, является ли пользователь администратором или создателем чата.
-func (uc *TelegramBotUseCase) IsUserAdminOfChat(ctx context.Context, userID, chatID int64) (bool, error) {
+func (uc *BotUseCase) IsUserAdminOfChat(ctx context.Context, userID, chatID int64) (bool, error) {
 	config := tgbotapi.GetChatMemberConfig{
 		ChatConfigWithUser: tgbotapi.ChatConfigWithUser{
 			ChatID: chatID,
@@ -202,7 +265,7 @@ func (uc *TelegramBotUseCase) IsUserAdminOfChat(ctx context.Context, userID, cha
 }
 
 // VerifyChat проверяет, что бот находится в чате и активирует его.
-func (uc *TelegramBotUseCase) VerifyChat(ctx context.Context, applicationID, chatID string) error {
+func (uc *BotUseCase) VerifyChat(ctx context.Context, applicationID, chatID string) error {
 	app, err := uc.applicationRepo.GetByID(ctx, applicationID)
 	if err != nil {
 		return err
@@ -250,6 +313,17 @@ func (uc *TelegramBotUseCase) VerifyChat(ctx context.Context, applicationID, cha
 	app.UpdatedAt = time.Now().UTC()
 
 	return uc.applicationRepo.Update(ctx, app)
+}
+
+func botApplicationName(platform, chatID string) string {
+	switch platform {
+	case "vk":
+		return "VK Bot " + chatID
+	case "telegram", "tg":
+		return "Telegram Bot " + chatID
+	default:
+		return "Bot " + chatID
+	}
 }
 
 func generateToken() (string, error) {
