@@ -24,7 +24,7 @@ Inappropriateness убрана.
 
 import torch
 import torch.nn as nn
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Response, Request
 from pydantic import BaseModel as PydanticBase
 from transformers import BertTokenizer, BertModel
 # from spam_filter import SpamFilter
@@ -210,3 +210,7 @@ def classify_batch(req: BatchRequest):
 @app.get("/health")
 def health():
     return {"status": "ok", "device": str(DEVICE), "head": head_type}
+
+@app.get("/metrics")
+def metrics():
+    return Response(content=generate_latest(), media_type=CONTENT_TYPE_LATEST)
