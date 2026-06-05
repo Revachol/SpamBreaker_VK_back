@@ -210,3 +210,7 @@ def classify_batch(req: BatchRequest):
 @app.get("/health")
 def health():
     return {"status": "ok", "device": str(DEVICE), "head": head_type}
+
+@app.get("/metrics")
+def metrics():
+    return Response(content=generate_latest(), media_type=CONTENT_TYPE_LATEST)
