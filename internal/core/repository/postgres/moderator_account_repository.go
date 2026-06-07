@@ -3,6 +3,8 @@ package repository
 import (
 	"context"
 	"errors"
+	"fmt"
+	"strings"
 	"time"
 
 	"github.com/Revachol/SpamBreaker_VK_back/internal/core/repository/interfaces"
@@ -65,12 +67,24 @@ func (r *ModeratorAccountRepo) FindVerifiedByPlatformAndAccountID(ctx context.Co
 	return scanAccount(row)
 }
 
-func (r *ModeratorAccountRepo) ListByModeratorID(ctx context.Context, moderatorID string) ([]domain.ModeratorAccount, error) {
+func (r *ModeratorAccountRepo) ListByModeratorID(ctx context.Context, moderatorID, platform string, active *bool) ([]domain.ModeratorAccount, error) {
 	query := `SELECT id, moderator_id, platform, account_id,
                      verification_token, token_expires_at, verified_at
-              FROM moderator_account WHERE moderator_id = $1
-              ORDER BY platform, account_id`
-	rows, err := r.pool.Query(ctx, query, moderatorID)
+              FROM moderator_account`
+	args := []interface{}{moderatorID}
+	conditions := []string{"moderator_id = $1"}
+
+	if platform != "" {
+		args = append(args, platform)
+		conditions = append(conditions, fmt.Sprintf("platform = $%d", len(args)))
+	}
+	if active != nil {
+		args = append(args, *active)
+		conditions = append(conditions, fmt.Sprintf("(verified_at IS NOT NULL) = $%d", len(args)))
+	}
+
+	query += " WHERE " + strings.Join(conditions, " AND ") + " ORDER BY platform, account_id"
+	rows, err := r.pool.Query(ctx, query, args...)
 	if err != nil {
 		return nil, err
 	}

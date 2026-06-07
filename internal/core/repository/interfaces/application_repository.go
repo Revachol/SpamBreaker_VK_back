@@ -15,7 +15,7 @@ type ApplicationRepository interface {
 	Update(ctx context.Context, app *domain.Application) error
 	Delete(ctx context.Context, id string) error
 	ListByOwner(ctx context.Context, ownerID string) ([]*domain.Application, error)
-	ListByOwnerOrAdmin(ctx context.Context, userID string) ([]*domain.Application, error)
+	ListByOwnerOrAdmin(ctx context.Context, userID, platform, role string) ([]*domain.Application, error)
 	AddAdmin(ctx context.Context, appID, moderatorID string) error
 	RemoveAdmin(ctx context.Context, appID, moderatorID string) error
 	ListAdminIDs(ctx context.Context, appID string) ([]string, error)

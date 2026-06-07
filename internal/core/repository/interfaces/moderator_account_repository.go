@@ -23,8 +23,8 @@ type ModeratorAccountRepository interface {
 	// FindVerifiedByPlatformAndAccountID ищет только верифицированные аккаунты.
 	FindVerifiedByPlatformAndAccountID(ctx context.Context, platform, accountID string) (*domain.ModeratorAccount, error)
 
-	// ListByModeratorID возвращает все аккаунты, привязанные к модератору.
-	ListByModeratorID(ctx context.Context, moderatorID string) ([]domain.ModeratorAccount, error)
+	// ListByModeratorID возвращает аккаунты модератора с фильтрами по платформе и верификации.
+	ListByModeratorID(ctx context.Context, moderatorID, platform string, active *bool) ([]domain.ModeratorAccount, error)
 
 	// VerifyAccount подтверждает аккаунт: устанавливает verified_at = now, удаляет токен.
 	VerifyAccount(ctx context.Context, id string) error

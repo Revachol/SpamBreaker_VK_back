@@ -3,6 +3,8 @@ package repository
 import (
 	"context"
 	"errors"
+	"fmt"
+	"strings"
 	"time"
 
 	"github.com/Revachol/SpamBreaker_VK_back/internal/domain"
@@ -242,13 +244,11 @@ func (r *ApplicationRepository) Delete(ctx context.Context, id string) error {
 }
 
 // ListByOwnerOrAdmin возвращает приложения, где пользователь — владелец или соадмин.
-func (r *ApplicationRepository) ListByOwnerOrAdmin(ctx context.Context, userID string) ([]*domain.Application, error) {
+func (r *ApplicationRepository) ListByOwnerOrAdmin(ctx context.Context, userID, platform, role string) ([]*domain.Application, error) {
 	query := `
 		SELECT DISTINCT a.id, a.name, a.platform, a.external_id, a.token, a.owner_id, a.status, a.verified_at, a.created_at, a.updated_at
 		FROM application a
 		LEFT JOIN application_admins aa ON aa.application_id = a.id
-		WHERE a.owner_id = $1 OR aa.moderator_id = $1
-		ORDER BY a.created_at DESC
 	`
 
 	parsedUserID, err := uuid.Parse(userID)
@@ -257,7 +257,24 @@ func (r *ApplicationRepository) ListByOwnerOrAdmin(ctx context.Context, userID s
 		return nil, err
 	}
 
-	rows, err := r.db.Query(ctx, query, parsedUserID)
+	args := []interface{}{parsedUserID}
+	conditions := make([]string, 0, 2)
+
+	switch role {
+	case "owner":
+		conditions = append(conditions, "a.owner_id = $1")
+	case "admin":
+		conditions = append(conditions, "aa.moderator_id = $1 AND (a.owner_id IS NULL OR a.owner_id <> $1)")
+	default:
+		conditions = append(conditions, "(a.owner_id = $1 OR aa.moderator_id = $1)")
+	}
+	if platform != "" {
+		args = append(args, platform)
+		conditions = append(conditions, fmt.Sprintf("a.platform = $%d", len(args)))
+	}
+
+	query += " WHERE " + strings.Join(conditions, " AND ") + " ORDER BY a.created_at DESC"
+	rows, err := r.db.Query(ctx, query, args...)
 	if err != nil {
 		r.logger.Errorf("Error listing accessible applications for user %s: %s", userID, err)
 		return nil, err
