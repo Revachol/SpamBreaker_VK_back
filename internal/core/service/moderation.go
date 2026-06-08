@@ -76,7 +76,11 @@ func (uc *ModerationUseCase) GetHistory(ctx context.Context, limit, offset int) 
 }
 
 // GetHistoryByApp возвращает историю проверок для конкретного приложения.
-func (uc *ModerationUseCase) GetHistoryByApp(ctx context.Context, applicationID string, limit, offset int) ([]*domain.CheckRecord, error) {
+func (uc *ModerationUseCase) GetHistoryByApp(
+	ctx context.Context,
+	applicationID string,
+	limit, offset int,
+) ([]*domain.CheckRecord, error) {
 	if limit <= 0 || limit > 200 {
 		limit = 50
 	}

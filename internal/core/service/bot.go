@@ -88,7 +88,7 @@ func (uc *BotUseCase) GenerateToken(ctx context.Context, ownerID string) (*domai
 func (uc *BotUseCase) ActivateBotByChatID(ctx context.Context, token, chatID string, fromUserID int64) error {
 	// 1. Проверяем, что пользователь верифицирован через moderator_account
 	accountID := strconv.FormatInt(fromUserID, 10)
-	acc, err := uc.moderatorAccountRepo.FindVerifiedByPlatformAndAccountID(ctx, "telegram", accountID)
+	acc, err := uc.moderatorAccountRepo.FindByPlatformAndAccountID(ctx, "telegram", accountID)
 	if err != nil {
 		if errors.Is(err, expectation.ErrNotFound) {
 			return fmt.Errorf("user not verified")
@@ -183,7 +183,7 @@ func (uc *BotUseCase) AddChat(ctx context.Context, moderatorID, platform, chatID
 func (uc *BotUseCase) HandleBotAddedToChat(ctx context.Context, chatID int64, fromUserID int64) error {
 	// Проверяем верификацию добавившего
 	accountID := strconv.FormatInt(fromUserID, 10)
-	_, err := uc.moderatorAccountRepo.FindVerifiedByPlatformAndAccountID(ctx, "telegram", accountID)
+	_, err := uc.moderatorAccountRepo.FindByPlatformAndAccountID(ctx, "telegram", accountID)
 	if err != nil {
 		if errors.Is(err, expectation.ErrNotFound) {
 			return fmt.Errorf("user not verified")
@@ -232,7 +232,7 @@ func (uc *BotUseCase) ListBots(ctx context.Context, ownerID string) ([]*domain.A
 
 // ListAccessibleBots возвращает боты, доступные пользователю.
 func (uc *BotUseCase) ListAccessibleBots(ctx context.Context, userID string) ([]*domain.Application, error) {
-	return uc.applicationRepo.ListByOwnerOrAdmin(ctx, userID)
+	return uc.applicationRepo.ListByOwnerOrAdmin(ctx, userID, "", "")
 }
 
 // GetByChatID возвращает приложение по внешнему ID чата.

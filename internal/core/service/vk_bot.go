@@ -172,7 +172,7 @@ func (uc *VkBotUseCase) ListBots(ctx context.Context, ownerID string) ([]*domain
 
 // ListAccessibleBots возвращает боты, к которым у пользователя есть доступ (владелец или соадмин).
 func (uc *VkBotUseCase) ListAccessibleBots(ctx context.Context, userID string) ([]*domain.Application, error) {
-	return uc.applicationRepo.ListByOwnerOrAdmin(ctx, userID)
+	return uc.applicationRepo.ListByOwnerOrAdmin(ctx, userID, "", "")
 }
 
 // AddAdmin добавляет соадмина по username. Только владелец может добавлять.

@@ -51,14 +51,17 @@ func (s *ModeratorService) InitiateVerification(
 	ctx context.Context,
 	moderatorID string,
 	platform string,
-	accountID string,
 ) (string, error) {
-	existing, err := s.moderatorAccountRepo.FindByPlatformAndAccountID(ctx, platform, accountID)
+	existing, err := s.moderatorAccountRepo.FindByPlatformAndModeratorID(ctx, platform, moderatorID)
 	if err != nil && !errors.Is(err, expectation.ErrNotFound) {
 		return "", fmt.Errorf("find existing moderator_account: %w", err)
 	}
 	if existing != nil && existing.VerifiedAt != nil {
 		return "", fmt.Errorf("account already verified")
+	}
+
+	if existing != nil && existing.VerifiedAt != nil && !existing.TokenExpiresAt.After(time.Now()) {
+		return *existing.VerificationToken, nil
 	}
 
 	token, err := generateVerificationToken()
@@ -77,7 +80,7 @@ func (s *ModeratorService) InitiateVerification(
 	acc := &domain.ModeratorAccount{
 		ModeratorID:       moderatorID,
 		Platform:          platform,
-		AccountID:         accountID,
+		AccountID:         nil,
 		VerificationToken: &token,
 		TokenExpiresAt:    &expires,
 	}
@@ -88,7 +91,7 @@ func (s *ModeratorService) InitiateVerification(
 }
 
 // VerifyTelegramAccount подтверждает Telegram-аккаунт.
-func (s *ModeratorService) VerifyTelegramAccount(ctx context.Context, platform, token string, accountID string) error {
+func (s *ModeratorService) VerifyTelegramAccount(ctx context.Context, platform, token, accountID string) error {
 	account, err := s.moderatorAccountRepo.FindByVerificationToken(ctx, token)
 	if err != nil {
 		if errors.Is(err, expectation.ErrNotFound) {
@@ -97,10 +100,7 @@ func (s *ModeratorService) VerifyTelegramAccount(ctx context.Context, platform, 
 		return err
 	}
 	if account.Platform != platform {
-		return errors.New("invalid platform")
-	}
-	if account.AccountID != accountID {
-		return errors.New("token is for another account")
+		return errors.New("invalid token")
 	}
 	if account.VerifiedAt != nil {
 		return errors.New("account already verified")
@@ -108,7 +108,7 @@ func (s *ModeratorService) VerifyTelegramAccount(ctx context.Context, platform, 
 	if account.TokenExpiresAt != nil && time.Now().After(*account.TokenExpiresAt) {
 		return errors.New("token expired")
 	}
-	return s.moderatorAccountRepo.VerifyAccount(ctx, account.ID)
+	return s.moderatorAccountRepo.VerifyAccount(ctx, account.ID, accountID)
 }
 
 // GetModeratorIDByVerifiedTelegramID возвращает ID модератора, если указанный Telegram ID верифицирован.
@@ -118,7 +118,7 @@ func (s *ModeratorService) GetModeratorIDByVerifiedTelegramID(ctx context.Contex
 
 // GetModeratorIDByVerifiedAccount возвращает ID модератора, если платформенный аккаунт верифицирован.
 func (s *ModeratorService) GetModeratorIDByVerifiedAccount(ctx context.Context, platform, accountID string) (string, error) {
-	account, err := s.moderatorAccountRepo.FindVerifiedByPlatformAndAccountID(ctx, platform, accountID)
+	account, err := s.moderatorAccountRepo.FindByPlatformAndAccountID(ctx, platform, accountID)
 	if err != nil {
 		if errors.Is(err, expectation.ErrNotFound) {
 			return "", expectation.ErrNotVerified
@@ -144,6 +144,33 @@ func (s *ModeratorService) IsVerified(ctx context.Context, moderatorID, platform
 		return false, nil
 	}
 	return account.VerifiedAt != nil, nil
+}
+
+// ListModeratorAccounts возвращает аккаунты модератора с фильтрами по платформе и верификации.
+func (s *ModeratorService) ListModeratorAccounts(ctx context.Context, moderatorID, platform string, active *bool) ([]domain.ModeratorAccount, error) {
+	return s.moderatorAccountRepo.ListByModeratorID(ctx, moderatorID, platform, active)
+}
+
+// ListUserBots возвращает приложения, к которым пользователь относится как владелец или соадмин.
+func (s *ModeratorService) ListUserBots(ctx context.Context, userID, platform, role string) ([]*domain.Application, error) {
+	switch role {
+	case "", "moderator", "admin":
+	default:
+		return nil, fmt.Errorf("unsupported role")
+	}
+	return s.applicationRepo.ListByOwnerOrAdmin(ctx, userID, platform, role)
+}
+
+// CheckUserOwnApp проверяет, что пользователь является владельцем приложения.
+func (s *ModeratorService) CheckUserOwnApp(ctx context.Context, userID, appID string) error {
+	app, err := s.applicationRepo.GetByID(ctx, appID)
+	if err != nil {
+		return err
+	}
+	if app == nil || app.OwnerID != userID {
+		return fmt.Errorf("forbidden")
+	}
+	return nil
 }
 
 // AddAdmin добавляет соадмина приложения. Только владелец может добавлять.
