@@ -86,7 +86,7 @@ func Run() {
 	handler := httphandler.NewBotHandler(moderationUC, botUC, modAccService, app.logger)
 	authHandler := httphandler.NewAuthHandler(authUC, app.logger)
 	moderHandler := httphandler.NewModeratorHandler(modAccService, botUC, app.logger)
-	botHandler := httphandler.NewBotManageHandler(botUC, app.logger)
+	botHandler := httphandler.NewBotManageHandler(botUC, modAccService, app.logger)
 	vkBotHandler := httphandler.NewVkBotHandler(vkBotUC, app.logger)
 	router := httphandler.NewRouter(
 		handler,

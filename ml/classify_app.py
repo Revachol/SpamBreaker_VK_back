@@ -23,7 +23,7 @@ Inappropriateness убрана.
 
 import torch
 import torch.nn as nn
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Request, Response
 from pydantic import BaseModel as PydanticBase
 from transformers import BertTokenizer, BertModel
 # from spam_filter import SpamFilter
@@ -63,6 +63,7 @@ HIDDEN_DIM = 768
 MLP_DIM = 128
 DROPOUT = 0.3                  # значение из обучения (в eval не влияет)
 DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+SERVICE_NAME = "model_service"
 
 
 # ── Метрики Prometheus ───────────────────────────────────────────────
@@ -198,8 +199,8 @@ async def metrics_middleware(request: Request, call_next):
 
     if endpoint == "/health" or endpoint == "/metrics":
         return response
-    requests_total.labels(method=method, path=endpoint, status=status, service=service).inc()
-    request_duration.labels(method=method, path=endpoint, status=status, service=service).observe(duration)
+    requests_total.labels(method=method, path=endpoint, status=status, service=SERVICE_NAME).inc()
+    request_duration.labels(method=method, path=endpoint, status=status, service=SERVICE_NAME).observe(duration)
 
     return response
 
@@ -228,3 +229,6 @@ def classify_batch(req: BatchRequest):
 def health():
     return {"status": "ok", "device": str(DEVICE), "head": head_type}
 
+@app.get("/metrics")
+def metrics():
+    return Response(content=generate_latest(), media_type=CONTENT_TYPE_LATEST)

@@ -245,12 +245,12 @@ func (uc *VkBotUseCase) GetAdmins(ctx context.Context, appID string) ([]*domain.
 
 // GetByChatID возвращает приложение по внешнему ID чата (Vk chat ID).
 func (uc *VkBotUseCase) GetByChatID(ctx context.Context, chatID string) (*domain.Application, error) {
-	return uc.applicationRepo.GetByExternalIDAndPlatform(ctx, chatID, "vk")
+	return uc.applicationRepo.GetByExternalIDAndPlatform(ctx, "vk", chatID)
 }
 
 // IsChatActive проверяет, зарегистрирован ли чат в системе.
 func (uc *VkBotUseCase) IsChatActive(ctx context.Context, chatID string) (bool, error) {
-	app, err := uc.applicationRepo.GetByExternalIDAndPlatform(ctx, chatID, "vk")
+	app, err := uc.applicationRepo.GetByExternalIDAndPlatform(ctx, "vk", chatID)
 	if err != nil {
 		return false, err
 	}

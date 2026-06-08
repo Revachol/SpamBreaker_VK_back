@@ -150,10 +150,10 @@ func (c *APIClient) VerifyUser(ctx context.Context, token string, userID int64) 
 
 // Check отправляет текст на проверку и возвращает вердикт.
 // chatID передаётся, чтобы бэкенд мог привязать запись к конкретному приложению.
-func (c *APIClient) CheckMessage(ctx context.Context, text string, chatID int64) (*CheckResponse, error) {
+func (c *APIClient) CheckMessage(ctx context.Context, text string, chatID string) (*CheckResponse, error) {
 	body, err := json.Marshal(CheckRequest{
 		Text:   text,
-		ChatID: strconv.FormatInt(chatID, 10),
+		ChatID: chatID,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("api client: marshal: %w", err)

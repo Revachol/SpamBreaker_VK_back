@@ -179,23 +179,6 @@ func (uc *BotUseCase) AddChat(ctx context.Context, moderatorID, platform, chatID
 	return app, nil
 }
 
-// HandleBotAddedToChat вызывается при событии my_chat_member (бот добавлен в группу).
-func (uc *BotUseCase) HandleBotAddedToChat(ctx context.Context, chatID int64, fromUserID int64) error {
-	// Проверяем верификацию добавившего
-	accountID := strconv.FormatInt(fromUserID, 10)
-	_, err := uc.moderatorAccountRepo.FindByPlatformAndAccountID(ctx, "telegram", accountID)
-	if err != nil {
-		if errors.Is(err, expectation.ErrNotFound) {
-			return fmt.Errorf("user not verified")
-		}
-		return fmt.Errorf("check verification: %w", err)
-	}
-
-	// Проверка прав администратора в чате выполняется ботом до вызова этого метода.
-	// Здесь можно добавить логику создания связи модератор-чат через отдельную таблицу.
-	return nil
-}
-
 // GetByToken получает приложение по токену.
 func (uc *BotUseCase) GetByToken(ctx context.Context, token string) (*domain.Application, error) {
 	return uc.applicationRepo.GetByToken(ctx, token)
@@ -247,21 +230,6 @@ func (uc *BotUseCase) IsChatActive(ctx context.Context, platform, chatID string)
 		return false, err
 	}
 	return app != nil && app.Status == "active", nil
-}
-
-// IsUserAdminOfChat проверяет, является ли пользователь администратором или создателем чата.
-func (uc *BotUseCase) IsUserAdminOfChat(ctx context.Context, userID, chatID int64) (bool, error) {
-	config := tgbotapi.GetChatMemberConfig{
-		ChatConfigWithUser: tgbotapi.ChatConfigWithUser{
-			ChatID: chatID,
-			UserID: userID,
-		},
-	}
-	member, err := uc.telegramAPI.GetChatMember(config)
-	if err != nil {
-		return false, fmt.Errorf("getChatMember: %w", err)
-	}
-	return member.IsAdministrator() || member.IsCreator(), nil
 }
 
 // VerifyChat проверяет, что бот находится в чате и активирует его.

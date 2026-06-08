@@ -3,6 +3,7 @@ package handlers
 import (
 	"context"
 	"fmt"
+	"strconv"
 	"strings"
 	"time"
 
@@ -11,12 +12,6 @@ import (
 	"github.com/Revachol/SpamBreaker_VK_back/pkg/logger"
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
 )
-
-// checkResult – упрощённая модель результата проверки текста.
-type checkResult struct {
-	Label      string  `json:"label"`
-	Confidence float64 `json:"confidence"`
-}
 
 // Bot инкапсулирует telegram-бота и зависимости.
 type Bot struct {
@@ -84,7 +79,7 @@ func (b *Bot) handleMessage(msg *tgbotapi.Message) {
 		ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 		defer cancel()
 
-		result, err := b.client.CheckMessage(ctx, text, chatID)
+		result, err := b.client.CheckMessage(ctx, text, strconv.FormatInt(chatID, 10))
 		if err != nil {
 			b.logger.Errorf("chat=%d text=%q check error: %v", chatID, text, err)
 			return
