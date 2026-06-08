@@ -6,11 +6,14 @@ import (
 	"errors"
 	"time"
 
+	"github.com/Revachol/SpamBreaker_VK_back/internal/core/repository/interfaces"
 	"github.com/Revachol/SpamBreaker_VK_back/internal/domain"
 	"github.com/Revachol/SpamBreaker_VK_back/pkg/logger"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
+
+var _ interfaces.MessageRepository = (*MessageRepository)(nil)
 
 // MessageRepository реализует интерфейс MessageRepository для PostgreSQL.
 type MessageRepository struct {

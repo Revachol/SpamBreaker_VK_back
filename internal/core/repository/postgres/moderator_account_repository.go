@@ -50,19 +50,19 @@ func (r *ModeratorAccountRepo) FindByID(ctx context.Context, id string) (*domain
 	return scanAccount(row)
 }
 
-func (r *ModeratorAccountRepo) FindByPlatformAndAccountID(ctx context.Context, platform, accountID string) (*domain.ModeratorAccount, error) {
+func (r *ModeratorAccountRepo) FindByPlatformAndModeratorID(ctx context.Context, platform, moderatorID string) (*domain.ModeratorAccount, error) {
 	query := `SELECT id, moderator_id, platform, account_id,
                      verification_token, token_expires_at, verified_at
-              FROM moderator_account WHERE platform = $1 AND account_id = $2`
-	row := r.pool.QueryRow(ctx, query, platform, accountID)
+              FROM moderator_account WHERE platform = $1 AND moderator_id = $2`
+	row := r.pool.QueryRow(ctx, query, platform, moderatorID)
 	return scanAccount(row)
 }
 
-func (r *ModeratorAccountRepo) FindVerifiedByPlatformAndAccountID(ctx context.Context, platform, accountID string) (*domain.ModeratorAccount, error) {
+func (r *ModeratorAccountRepo) FindByPlatformAndAccountID(ctx context.Context, platform, accountID string) (*domain.ModeratorAccount, error) {
 	query := `SELECT id, moderator_id, platform, account_id,
                      verification_token, token_expires_at, verified_at
               FROM moderator_account
-              WHERE platform = $1 AND account_id = $2 AND verified_at IS NOT NULL`
+              WHERE platform = $1 AND account_id = $2`
 	row := r.pool.QueryRow(ctx, query, platform, accountID)
 	return scanAccount(row)
 }
@@ -101,13 +101,14 @@ func (r *ModeratorAccountRepo) ListByModeratorID(ctx context.Context, moderatorI
 	return accounts, rows.Err()
 }
 
-func (r *ModeratorAccountRepo) VerifyAccount(ctx context.Context, id string) error {
+func (r *ModeratorAccountRepo) VerifyAccount(ctx context.Context, id, accID string) error {
 	query := `UPDATE moderator_account
               SET verified_at = NOW(),
                   verification_token = NULL,
-                  token_expires_at = NULL
+                  token_expires_at = NULL,
+                  accoutnt_id = $2
               WHERE id = $1`
-	tag, err := r.pool.Exec(ctx, query, id)
+	tag, err := r.pool.Exec(ctx, query, id, accID)
 	if err != nil {
 		return err
 	}

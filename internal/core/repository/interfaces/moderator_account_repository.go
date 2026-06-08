@@ -17,17 +17,17 @@ type ModeratorAccountRepository interface {
 	// FindByID возвращает аккаунт по первичному ключу.
 	FindByID(ctx context.Context, id string) (*domain.ModeratorAccount, error)
 
-	// FindByPlatformAndAccountID ищет аккаунт по платформе и идентификатору.
-	FindByPlatformAndAccountID(ctx context.Context, platform, accountID string) (*domain.ModeratorAccount, error)
+	// FindByPlatformAndModeratorID ищет аккаунт по платформе и идентификатору.
+	FindByPlatformAndModeratorID(ctx context.Context, platform, moderatorID string) (*domain.ModeratorAccount, error)
 
-	// FindVerifiedByPlatformAndAccountID ищет только верифицированные аккаунты.
-	FindVerifiedByPlatformAndAccountID(ctx context.Context, platform, accountID string) (*domain.ModeratorAccount, error)
+	// FindByPlatformAndAccountID ищет аккаунт по платформе и идентификатору в соц сети.
+	FindByPlatformAndAccountID(ctx context.Context, platform, accountID string) (*domain.ModeratorAccount, error)
 
 	// ListByModeratorID возвращает аккаунты модератора с фильтрами по платформе и верификации.
 	ListByModeratorID(ctx context.Context, moderatorID, platform string, active *bool) ([]domain.ModeratorAccount, error)
 
 	// VerifyAccount подтверждает аккаунт: устанавливает verified_at = now, удаляет токен.
-	VerifyAccount(ctx context.Context, id string) error
+	VerifyAccount(ctx context.Context, id, accID string) error
 
 	// UpdateToken обновляет токен и срок действия (для повторной отправки).
 	UpdateToken(ctx context.Context, id string, token string, expiresAt time.Time) error

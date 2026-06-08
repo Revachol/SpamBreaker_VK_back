@@ -7,12 +7,15 @@ import (
 	"strings"
 	"time"
 
+	"github.com/Revachol/SpamBreaker_VK_back/internal/core/repository/interfaces"
 	"github.com/Revachol/SpamBreaker_VK_back/internal/domain"
 	"github.com/Revachol/SpamBreaker_VK_back/pkg/logger"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
+
+var _ interfaces.ApplicationRepository = (*ApplicationRepository)(nil)
 
 // ApplicationRepository реализует интерфейс ApplicationRepository для PostgreSQL.
 type ApplicationRepository struct {
