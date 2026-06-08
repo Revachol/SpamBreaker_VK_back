@@ -162,28 +162,28 @@ func (b *VKBot) sendMessage(peerID int, text string, replyTo int) {
 // handleConnect обрабатывает команду /connect TOKEN.
 func (b *VKBot) handleConnect(msg *object.MessagesMessage, parts []string) error {
 	// 1. Проверяем наличие токена в аргументах
-	if len(parts) < 2 {
-		b.sendMessage(msg.PeerID, "❌ Укажите токен: `/connect ВАШ_ТОКЕН`", msg.ConversationMessageID)
-		return nil
-	}
+	//if len(parts) < 2 {
+	//	b.sendMessage(msg.PeerID, "❌ Укажите токен: `/connect ВАШ_ТОКЕН`", msg.ConversationMessageID)
+	//	return nil
+	//}
+	//
+	//token := parts[1]
+	//chatID := strconv.Itoa(msg.PeerID)
+	//
+	//// 2. Создаем контекст для запроса к Core API
+	//ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	//defer cancel()
 
-	token := parts[1]
-	chatID := strconv.Itoa(msg.PeerID)
-
-	// 2. Создаем контекст для запроса к Core API
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-	defer cancel()
-
-	// 3. Вызываем активацию чата
-	if err := b.client.ActivateChat(ctx, token, chatID); err != nil {
-		b.logger.Errorf("failed to activate chat %s with token: %v", chatID, err)
-		b.sendMessage(msg.PeerID, "❌ Не удалось подключить бота. Проверьте токен и попробуйте снова.", msg.ConversationMessageID)
-		return err
-	}
-
-	// 4. Отправляем успешный ответ
-	successMsg := "✅ *Бот SpamBreaker успешно подключён!*\n\nМодерация сообщений активирована."
-	b.sendMessage(msg.PeerID, successMsg, msg.ConversationMessageID)
+	//// 3. Вызываем активацию чата
+	//if err := b.client.ActivateChat(ctx, token, chatID); err != nil {
+	//	b.logger.Errorf("failed to activate chat %s with token: %v", chatID, err)
+	//	b.sendMessage(msg.PeerID, "❌ Не удалось подключить бота. Проверьте токен и попробуйте снова.", msg.ConversationMessageID)
+	//	return err
+	//}
+	//
+	//// 4. Отправляем успешный ответ
+	//successMsg := "✅ *Бот SpamBreaker успешно подключён!*\n\nМодерация сообщений активирована."
+	//b.sendMessage(msg.PeerID, successMsg, msg.ConversationMessageID)
 
 	return nil
 }

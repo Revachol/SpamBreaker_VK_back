@@ -53,12 +53,6 @@ type errorResponse struct {
 	Error string `json:"error"`
 }
 
-type activateBotRequest struct {
-	Token  string `json:"token" binding:"required"`
-	ChatID string `json:"chat_id" binding:"required"`
-	UserID int64  `json:"user_id" binding:"required"`
-}
-
 type deactivateBotRequest struct {
 	ChatID string `json:"chat_id"`
 }
@@ -78,11 +72,6 @@ type verifyChatResponse struct {
 	Message   string `json:"message"`
 	Activated bool   `json:"activated"`
 	Token     string `json:"token"`
-}
-
-type verificationStatusResponse struct {
-	Verified bool   `json:"verified"`
-	Platform string `json:"platform"`
 }
 
 // ---------- Handlers ----------

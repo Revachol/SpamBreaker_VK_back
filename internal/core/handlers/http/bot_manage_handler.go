@@ -31,18 +31,6 @@ func NewBotManageHandler(
 
 // ---------- DTOs ----------
 
-type botUCTokenResponse struct {
-	Token     string `json:"token"`
-	ExpiresAt string `json:"expires_at"`
-	CreatedAt string `json:"created_at"`
-}
-
-type botUCStatusResponse struct {
-	Connected   bool   `json:"connected"`
-	ChatID      string `json:"chat_id,omitempty"`
-	ActivatedAt string `json:"activated_at,omitempty"`
-}
-
 type botUCSettingsResponse struct {
 	Sensitivity int      `json:"sensitivity"`
 	BannedWords []string `json:"banned_words"`
