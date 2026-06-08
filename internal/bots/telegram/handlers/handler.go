@@ -3,7 +3,6 @@ package handlers
 import (
 	"context"
 	"fmt"
-	"strconv"
 	"strings"
 	"time"
 
@@ -43,9 +42,9 @@ func (b *Bot) Run(coll botmetrics.BotMetricsIface) {
 	})
 
 	for update := range updates {
-		// Обработка my_chat_member (бот добавлен в чат)
+		// Обработка my_chat_member (бот добавлен или удалён из чата)
 		if update.MyChatMember != nil {
-			b.handleChatAdded(update.MyChatMember)
+			b.handleChatMemberChanged(update.MyChatMember)
 			continue
 		}
 
@@ -85,7 +84,7 @@ func (b *Bot) handleMessage(msg *tgbotapi.Message) {
 		ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 		defer cancel()
 
-		result, err := b.client.CheckMessage(ctx, text, strconv.FormatInt(chatID, 10))
+		result, err := b.client.CheckMessage(ctx, text, chatID)
 		if err != nil {
 			b.logger.Errorf("chat=%d text=%q check error: %v", chatID, text, err)
 			return
@@ -116,9 +115,18 @@ func (b *Bot) handleMessage(msg *tgbotapi.Message) {
 	}
 }
 
-// handleMyChatMember обрабатывает событие добавления бота в чат.
+// handleChatMemberChanged обрабатывает добавление и удаление бота из чата.
+func (b *Bot) handleChatMemberChanged(update *tgbotapi.ChatMemberUpdated) {
+	switch update.NewChatMember.Status {
+	case "member":
+		b.handleChatAdded(update)
+	case "kicked":
+		b.handleChatRemoved(update)
+	}
+}
+
+// handleChatAdded обрабатывает событие добавления бота в чат.
 func (b *Bot) handleChatAdded(update *tgbotapi.ChatMemberUpdated) {
-	// Реагируем только на добавление бота (status = "member")
 	if update.NewChatMember.Status != "member" {
 		return
 	}
@@ -128,9 +136,16 @@ func (b *Bot) handleChatAdded(update *tgbotapi.ChatMemberUpdated) {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
-	err := b.client.ActivateChat(ctx, chatID, fromUser.ID)
+	member, err := b.api.GetChatMember(tgbotapi.GetChatMemberConfig{
+		ChatConfigWithUser: tgbotapi.ChatConfigWithUser{
+			ChatID: chatID,
+			UserID: fromUser.ID,
+		},
+	})
 	if err != nil {
-		b.logger.Warnf("VerifyAddChat failed for chat=%d, user=%d: %v", chatID, fromUser.ID, err)
+		b.logger.Warnf("GetChatMember failed for chat=%d, user=%d: %v", chatID, fromUser.ID, err)
+	}
+	if !member.IsAdministrator() {
 		// Отправляем предупреждение в чат и выходим
 		warn := tgbotapi.NewMessage(chatID,
 			"⛔ Бот может быть добавлен только верифицированным администратором. Пожалуйста, подтвердите аккаунт в приложении и убедитесь, что вы администратор этой группы.")
@@ -141,11 +156,28 @@ func (b *Bot) handleChatAdded(update *tgbotapi.ChatMemberUpdated) {
 		return
 	}
 
+	err = b.client.ActivateChat(ctx, fromUser.ID, chatID)
+	if err != nil {
+		b.logger.Warnf("VerifyAddChat failed for chat=%d, user=%d: %v", chatID, fromUser.ID, err)
+		return
+	}
+
 	// Успех – приветственное сообщение
 	welcome := tgbotapi.NewMessage(chatID,
-		"✅ Бот SpamBreaker успешно активирован! Я буду автоматически модерировать сообщения.\n"+
-			"Настройки доступны в личном кабинете.")
+		"✅ Бот SpamBreaker успешно активирован!")
 	b.api.Send(welcome) //nolint:errcheck
+}
+
+// handleChatRemoved обрабатывает событие удаления бота из чата.
+func (b *Bot) handleChatRemoved(update *tgbotapi.ChatMemberUpdated) {
+	chatID := update.Chat.ID
+
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	if err := b.client.DeactivateChat(ctx, chatID); err != nil {
+		b.logger.Warnf("DeactivateChat failed for chat=%d: %v", chatID, err)
+	}
 }
 
 // handleCommand обрабатывает команды (/start, /help, /connect).

@@ -72,24 +72,24 @@ func (b *VKBot) handleMessage(msg *object.MessagesMessage) error {
 	}
 
 	// Проверка активации для групп
-	if isGroup {
-		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-		active, err := b.client.IsChatActive(ctx, peerIDStr)
-		cancel()
-		if err != nil {
-			b.logger.Warnf("failed to check chat %s registration: %v", peerIDStr, err)
-			return nil
-		}
-		if !active {
-			return nil
-		}
-	}
+	//if isGroup {
+	//	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	//	active, err := b.client.IsChatActive(ctx, peerIDStr)
+	//	cancel()
+	//	if err != nil {
+	//		b.logger.Warnf("failed to check chat %s registration: %v", peerIDStr, err)
+	//		return nil
+	//	}
+	//	if !active {
+	//		return nil
+	//	}
+	//}
 
 	// Анализ текста через ML Core
 	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 	defer cancel()
 
-	result, err := b.client.Check(ctx, text, peerIDStr)
+	result, err := b.client.CheckMessage(ctx, text, peerIDStr)
 	if err != nil {
 		if !isGroup {
 			b.sendMessage(msg.PeerID, utils.FormatError(err), msg.ConversationMessageID)

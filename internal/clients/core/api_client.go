@@ -6,26 +6,32 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"strconv"
 	"time"
 )
 
 const (
-	activateBot     = ""
-	removeBotHandle = ""
-	verifyUser      = ""
-	checkMessage    = ""
+	activateBot     = "/api/bot/v1/telegram/chat/active"
+	removeBotHandle = "/api/bot/v1/telegram/chat/active"
+	verifyUser      = "/api/bot/v1/telegram/active"
+	checkMessage    = "/api/bot/v1/telegram/check"
 )
 
 // ActivateRequest — запрос к Core API.
 type ActivateRequest struct {
-	UserID int64 `json:"user_id,omitempty"`
-	ChatID int64 `json:"chat_id,omitempty"`
+	UserID string `json:"user_id,omitempty"`
+	ChatID string `json:"chat_id,omitempty"`
+}
+
+// DeactivateRequest — запрос на деактивацию чата в Core API.
+type DeactivateRequest struct {
+	ChatID string `json:"chat_id"`
 }
 
 // VerifyRequest — запрос к Core API.
 type VerifyRequest struct {
 	Token  string `json:"token"`
-	UserID int64  `json:"user_id,omitempty"`
+	UserID string `json:"user_id,omitempty"`
 }
 
 // CheckRequest — запрос к Core API.
@@ -60,9 +66,12 @@ func NewAPIClient(baseURL string) *APIClient {
 	}
 }
 
-// ActivateChat активирует чат по токену (вызывается ботом при получении /connect TOKEN).
+// ActivateChat регистрирует чат после добавления бота.
 func (c *APIClient) ActivateChat(ctx context.Context, userID, chatID int64) error {
-	body, err := json.Marshal(ActivateRequest{UserID: userID, ChatID: chatID})
+	body, err := json.Marshal(ActivateRequest{
+		UserID: strconv.FormatInt(userID, 10),
+		ChatID: strconv.FormatInt(chatID, 10),
+	})
 	if err != nil {
 		return err
 	}
@@ -71,6 +80,7 @@ func (c *APIClient) ActivateChat(ctx context.Context, userID, chatID int64) erro
 	if err != nil {
 		return fmt.Errorf("api client: build request: %w", err)
 	}
+	req.Header.Set("Content-Type", "application/json")
 
 	resp, err := c.httpClient.Do(req)
 	if err != nil {
@@ -85,9 +95,36 @@ func (c *APIClient) ActivateChat(ctx context.Context, userID, chatID int64) erro
 	return nil
 }
 
-// VerifyUser some
-func (c *APIClient) VerifyUser(ctx context.Context, token string, UserId int64) error {
-	body, err := json.Marshal(VerifyRequest{Token: token, UserID: UserId})
+// DeactivateChat деактивирует чат в Core API.
+func (c *APIClient) DeactivateChat(ctx context.Context, chatID int64) error {
+	body, err := json.Marshal(DeactivateRequest{ChatID: strconv.FormatInt(chatID, 10)})
+	if err != nil {
+		return err
+	}
+
+	url := fmt.Sprintf("%s%s", c.baseURL, removeBotHandle)
+	req, err := http.NewRequestWithContext(ctx, http.MethodDelete, url, bytes.NewReader(body))
+	if err != nil {
+		return fmt.Errorf("api client: build request: %w", err)
+	}
+	req.Header.Set("Content-Type", "application/json")
+
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return fmt.Errorf("api client: request failed: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return fmt.Errorf("api client: deactivate failed with status %d", resp.StatusCode)
+	}
+
+	return nil
+}
+
+// VerifyUser подтверждает аккаунт пользователя по токену.
+func (c *APIClient) VerifyUser(ctx context.Context, token string, userID int64) error {
+	body, err := json.Marshal(VerifyRequest{Token: token, UserID: strconv.FormatInt(userID, 10)})
 	if err != nil {
 		return err
 	}
@@ -96,6 +133,7 @@ func (c *APIClient) VerifyUser(ctx context.Context, token string, UserId int64) 
 	if err != nil {
 		return fmt.Errorf("api client: build request: %w", err)
 	}
+	req.Header.Set("Content-Type", "application/json")
 
 	resp, err := c.httpClient.Do(req)
 	if err != nil {
@@ -110,38 +148,13 @@ func (c *APIClient) VerifyUser(ctx context.Context, token string, UserId int64) 
 	return nil
 }
 
-// IsChatActive проверяет, зарегистрирован ли чат в системе.
-func (c *APIClient) IsChatActive(ctx context.Context, chatID string) (bool, error) {
-	url := fmt.Sprintf("%s/api/v1/bots/telegram/internal/chat-active?chat_id=%s", c.baseURL, chatID)
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
-	if err != nil {
-		return false, fmt.Errorf("api client: build request: %w", err)
-	}
-
-	resp, err := c.httpClient.Do(req)
-	if err != nil {
-		return false, fmt.Errorf("api client: request failed: %w", err)
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		return false, fmt.Errorf("api client: unexpected status %d", resp.StatusCode)
-	}
-
-	var result struct {
-		Active bool `json:"active"`
-	}
-	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
-		return false, fmt.Errorf("api client: decode: %w", err)
-	}
-
-	return result.Active, nil
-}
-
 // Check отправляет текст на проверку и возвращает вердикт.
 // chatID передаётся, чтобы бэкенд мог привязать запись к конкретному приложению.
-func (c *APIClient) CheckMessage(ctx context.Context, text, chatID string) (*CheckResponse, error) {
-	body, err := json.Marshal(CheckRequest{Text: text, ChatID: chatID})
+func (c *APIClient) CheckMessage(ctx context.Context, text string, chatID int64) (*CheckResponse, error) {
+	body, err := json.Marshal(CheckRequest{
+		Text:   text,
+		ChatID: strconv.FormatInt(chatID, 10),
+	})
 	if err != nil {
 		return nil, fmt.Errorf("api client: marshal: %w", err)
 	}
