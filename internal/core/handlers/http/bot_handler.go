@@ -6,7 +6,6 @@ import (
 	"strings"
 
 	"github.com/Revachol/SpamBreaker_VK_back/internal/core/service"
-	"github.com/Revachol/SpamBreaker_VK_back/internal/domain"
 	"github.com/Revachol/SpamBreaker_VK_back/pkg/logger"
 	"github.com/gin-gonic/gin"
 )
@@ -95,25 +94,32 @@ type verificationStatusResponse struct {
 //	@Tags        moderation
 //	@Accept      json
 //	@Produce     json
+//	@Param       service path string true "Платформа бота (telegram, vk)"
 //	@Param       body body     checkRequest  true "Текст для проверки"
 //	@Success     200  {object} checkResponse
 //	@Failure     400  {object} errorResponse
 //	@Failure     502  {object} errorResponse
-//	@Router      /api/v1/check [post]
+//	@Router      /api/bot/v1/{service}/check [post]
 func (h *BotHandler) Check(c *gin.Context) {
+	platform := normalizeBotService(c.Param("service"))
+	if platform == "" {
+		h.logger.Warnf("Check: unsupported service param %q", c.Param("service"))
+		c.JSON(http.StatusBadRequest, errorResponse{Error: "unsupported service"})
+		return
+	}
+
 	var req checkRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		h.logger.Warnf("Bind error %s", err)
 		c.JSON(http.StatusBadRequest, errorResponse{Error: err.Error()})
 		return
 	}
-	platform := c.Param("service")
 
 	applicationID := ""
 	if req.ChatID != "" {
 		app, err := h.botUC.GetByChatID(c.Request.Context(), platform, req.ChatID)
 		if err != nil {
-			h.logger.Warnf("Check: GetByChatID(%q) error: %v", req.ChatID, err)
+			h.logger.Errorf("Check: GetByChatID(%q) error: %v", req.ChatID, err)
 		} else if app != nil {
 			applicationID = app.ID
 			h.logger.Infof("Check: chat_id=%q -> application_id=%s", req.ChatID, applicationID)
@@ -143,32 +149,40 @@ func (h *BotHandler) Check(c *gin.Context) {
 	})
 }
 
-// GetBotHistory возвращает историю сообщений, обработанных Telegram-ботом пользователя.
+// GetBotHistory godoc
+//
+//	@Summary      История проверок Telegram-бота
+//	@Description  Возвращает историю сообщений для приложения Telegram-бота текущего пользователя
+//	@Tags         telegram-bot
+//	@Produce      json
+//	@Param        appID  path  string true  "ID приложения"
+//	@Param        limit  query int    false "Количество записей (default 50)"
+//	@Param        offset query int    false "Смещение"
+//	@Success      200 {array}  checkResponse
+//	@Failure      401 {object} errorResponse
+//	@Failure      500 {object} errorResponse
+//	@Router       /api/v1/bot/{appID}/history [get]
+//	@Security     Bearer
 func (h *BotHandler) GetBotHistory(c *gin.Context) {
 	userID, exists := c.Get("user_id")
+	appID := c.Param("app_id")
 	if !exists {
+		h.logger.Warnf("GetBotHistory: missing user_id in context")
 		c.JSON(http.StatusUnauthorized, errorResponse{Error: "not authenticated"})
 		return
 	}
-	limit := queryInt(c, "limit", 50)
-	offset := queryInt(c, "offset", 0)
-
-	apps, err := h.botUC.ListAccessibleBots(c.Request.Context(), userID.(string))
-	if err != nil {
-		h.logger.Errorf("GetBotHistory: list bots: %s", err)
-		c.JSON(http.StatusInternalServerError, errorResponse{Error: "failed to list bots"})
+	if appID == "" {
+		h.logger.Warnf("GetBotHistory: missing app_id path param")
+		c.JSON(http.StatusBadRequest, errorResponse{Error: "app_id is required"})
 		return
 	}
+	limit := queryInt(c, "limit", 50, h.logger)
+	offset := queryInt(c, "offset", 0, h.logger)
 
-	var appID string
-	for _, app := range apps {
-		if app.Platform == "telegram" && app.Status == "active" {
-			appID = app.ID
-			break
-		}
-	}
-	if appID == "" {
-		c.JSON(http.StatusNotFound, errorResponse{Error: "no active telegram bot"})
+	err := h.moderatorService.CheckUserOwnApp(c.Request.Context(), userID.(string), appID)
+	if err != nil {
+		h.logger.Errorf("GetBotHistory: check app owner: %v", err)
+		c.JSON(http.StatusBadRequest, errorResponse{Error: "invalid app"})
 		return
 	}
 
@@ -205,11 +219,12 @@ func (h *BotHandler) GetBotHistory(c *gin.Context) {
 //	@Failure     500    {object} errorResponse
 //	@Router      /api/v1/history [get]
 func (h *BotHandler) GetHistory(c *gin.Context) {
-	limit := queryInt(c, "limit", 20)
-	offset := queryInt(c, "offset", 0)
+	limit := queryInt(c, "limit", 20, h.logger)
+	offset := queryInt(c, "offset", 0, h.logger)
 
 	records, err := h.moderation.GetHistory(c.Request.Context(), limit, offset)
 	if err != nil {
+		h.logger.Errorf("GetHistory: get history: %v", err)
 		c.JSON(http.StatusInternalServerError, errorResponse{Error: err.Error()})
 		return
 	}
@@ -240,9 +255,15 @@ func (h *BotHandler) GetHistory(c *gin.Context) {
 //	@Router      /api/v1/history/{id} [get]
 func (h *BotHandler) GetHistoryRecord(c *gin.Context) {
 	id := c.Param("id")
+	if id == "" {
+		h.logger.Warnf("GetHistoryRecord: missing id path param")
+		c.JSON(http.StatusBadRequest, errorResponse{Error: "id is required"})
+		return
+	}
 
 	record, err := h.moderation.GetRecord(c.Request.Context(), id)
 	if err != nil {
+		h.logger.Errorf("GetHistoryRecord: get record %q: %v", id, err)
 		c.JSON(http.StatusNotFound, errorResponse{Error: err.Error()})
 		return
 	}
@@ -264,19 +285,27 @@ func (h *BotHandler) GetHistoryRecord(c *gin.Context) {
 //	@Tags         telegram-internal
 //	@Accept       json
 //	@Produce      json
+//	@Param        service path string true "Платформа бота (telegram, vk)"
 //	@Param        body body verifyUserTokenRequest true "Токен и Telegram ID пользователя"
 //	@Success      200 {object} map[string]bool
 //	@Failure      400 {object} errorResponse
 //	@Failure      403 {object} errorResponse
 //	@Failure      500 {object} errorResponse
-//	@Router       /api/v1/bots/telegram/verify-user [post]
+//	@Router       /api/bot/v1/{service}/active [post]
 func (h *BotHandler) VerifyUserToken(c *gin.Context) {
+	platform := normalizeBotService(c.Param("service"))
+	if platform == "" {
+		h.logger.Warnf("VerifyUserToken: unsupported service param %q", c.Param("service"))
+		c.JSON(http.StatusBadRequest, errorResponse{Error: "unsupported service"})
+		return
+	}
+
 	var req verifyUserTokenRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
+		h.logger.Warnf("VerifyUserToken: bind request: %v", err)
 		c.JSON(http.StatusBadRequest, errorResponse{Error: err.Error()})
 		return
 	}
-	platform := c.Param("service")
 
 	err := h.moderatorService.VerifyTelegramAccount(c.Request.Context(), platform, req.Token, req.UserID)
 	if err != nil {
@@ -297,128 +326,6 @@ func (h *BotHandler) VerifyUserToken(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"success": true})
 }
 
-// DeactivateBot deactivates a bot by platform and external chat ID.
-func (h *BotHandler) DeactivateBot(c *gin.Context) {
-	var req deactivateBotRequest
-	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, errorResponse{Error: err.Error()})
-		return
-	}
-	if req.ChatID == "" {
-		req.ChatID = c.Query("chat_id")
-	}
-	if req.ChatID == "" {
-		c.JSON(http.StatusBadRequest, errorResponse{Error: "chat_id is required"})
-		return
-	}
-
-	platform := strings.ToLower(c.Param("service"))
-	app, err := h.botUC.GetByChatID(c.Request.Context(), platform, req.ChatID)
-	if err != nil {
-		h.logger.Errorf("DeactivateBot telegram lookup error: %v", err)
-		c.JSON(http.StatusInternalServerError, errorResponse{Error: "failed to find bot"})
-		return
-	}
-	if app == nil {
-		c.JSON(http.StatusNotFound, errorResponse{Error: "telegram bot not found for chat"})
-		return
-	}
-	if err := h.botUC.DisableBot(c.Request.Context(), app.ID); err != nil {
-		h.logger.Errorf("DeactivateBot telegram error: %v", err)
-		c.JSON(http.StatusInternalServerError, errorResponse{Error: "failed to deactivate bot"})
-		return
-	}
-
-	c.JSON(http.StatusOK, gin.H{"success": true})
-}
-
-// DisableBot godoc
-//
-//	@Summary      Отключить Telegram бота
-//	@Description  Деактивирует активного Telegram бота пользователя
-//	@Tags         telegram-bot
-//	@Produce      JSON
-//	@Success      200 {object} map[string]bool
-//	@Failure      404 {object} errorResponse
-//	@Failure      500 {object} errorResponse
-//	@Router       /api/v1/bots/telegram/disable [post]
-//	@Security     Bearer
-func (h *BotHandler) DisableBot(c *gin.Context) {
-	userID, _ := c.Get("user_id")
-
-	apps, err := h.botUC.ListAccessibleBots(c.Request.Context(), userID.(string))
-	if err != nil {
-		h.logger.Errorf("Error listing bots: %s", err)
-		c.JSON(http.StatusInternalServerError, errorResponse{Error: "failed to list bots"})
-		return
-	}
-
-	var activeApp *domain.Application
-	for _, app := range apps {
-		if app.Platform == "telegram" && app.Status == "active" {
-			activeApp = app
-			break
-		}
-	}
-	if activeApp == nil {
-		c.JSON(http.StatusNotFound, errorResponse{Error: "no active telegram bot found"})
-		return
-	}
-
-	if err := h.botUC.DisableBot(c.Request.Context(), activeApp.ID); err != nil {
-		h.logger.Errorf("Error disabling bot: %s", err)
-		c.JSON(http.StatusInternalServerError, errorResponse{Error: "failed to disable bot"})
-		return
-	}
-
-	c.JSON(http.StatusOK, gin.H{"success": true})
-}
-
-// GetVerificationStatus godoc
-//
-//	@Summary      Проверить статус верификации аккаунта
-//	@Description  Возвращает true, если указанный аккаунт верифицирован для текущего пользователя
-//	@Tags         moderator-verification
-//	@Produce      json
-//	@Param        platform   query string true "Платформа (vk, telegram, api)"
-//	@Param        account_id query string true "ID аккаунта на платформе"
-//	@Success      200 {object} verificationStatusResponse
-//	@Failure      400 {object} errorResponse
-//	@Failure      500 {object} errorResponse
-//	@Router       /api/v1/moderator/verify/status [get]
-//	@Security     Bearer
-func (h *BotHandler) GetVerificationStatus(c *gin.Context) {
-	userID, exists := c.Get("user_id")
-	if !exists {
-		c.JSON(http.StatusUnauthorized, errorResponse{Error: "user not authenticated"})
-		return
-	}
-
-	platform := c.Query("platform")
-	accountID := c.Query("account_id")
-	if platform == "" || accountID == "" {
-		c.JSON(http.StatusBadRequest, errorResponse{Error: "platform and account_id are required"})
-		return
-	}
-
-	verified, err := h.moderatorService.IsVerified(
-		c.Request.Context(),
-		userID.(string),
-		platform,
-		accountID,
-	)
-	if err != nil {
-		h.logger.Errorf("GetVerificationStatus error: %v", err)
-		c.JSON(http.StatusInternalServerError, errorResponse{Error: "failed to check status"})
-		return
-	}
-
-	c.JSON(http.StatusOK, verificationStatusResponse{
-		Verified: verified,
-		Platform: platform,
-	})
-}
-
 // ActivateAddChat godoc
 //
 //	@Summary      Проверить, что бот добавлен администратором с верификацией
@@ -426,22 +333,25 @@ func (h *BotHandler) GetVerificationStatus(c *gin.Context) {
 //	@Tags         telegram-internal
 //	@Accept       json
 //	@Produce      json
+//	@Param        service path string true "Платформа бота (telegram, vk)"
 //	@Param        body body object{chat_id=int,user_id=int} true "chat_id и user_id добавившего"
 //	@Success      200 {object} map[string]bool
 //	@Failure      400 {object} errorResponse
 //	@Failure      403 {object} errorResponse
 //	@Failure      500 {object} errorResponse
-//	@Router       /api/v1/bots/telegram/verify-add-chat [post]
+//	@Router       /api/bot/v1/{service}/chat/active [post]
 func (h *BotHandler) ActivateAddChat(c *gin.Context) {
-	var req AddChatRequest
-	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, errorResponse{Error: err.Error()})
+	platform := normalizeBotService(c.Param("service"))
+	if platform == "" {
+		h.logger.Warnf("ActivateAddChat: unsupported service param %q", c.Param("service"))
+		c.JSON(http.StatusBadRequest, errorResponse{Error: "unsupported service"})
 		return
 	}
 
-	platform := normalizeBotService(c.Param("service"))
-	if platform == "" {
-		c.JSON(http.StatusBadRequest, errorResponse{Error: "unsupported service"})
+	var req AddChatRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		h.logger.Warnf("ActivateAddChat: bind request: %v", err)
+		c.JSON(http.StatusBadRequest, errorResponse{Error: err.Error()})
 		return
 	}
 
@@ -472,12 +382,111 @@ func (h *BotHandler) ActivateAddChat(c *gin.Context) {
 	})
 }
 
+// DeactivateBot godoc
+//
+//	@Summary      Деактивировать чат бота
+//	@Description  Деактивирует бота для указанного чата на платформе
+//	@Tags         bot-internal
+//	@Accept       json
+//	@Produce      json
+//	@Param        service path string true "Платформа бота (telegram, vk)"
+//	@Param        body body deactivateBotRequest true "Данные чата"
+//	@Success      200 {object} map[string]bool
+//	@Failure      400 {object} errorResponse
+//	@Failure      404 {object} errorResponse
+//	@Failure      500 {object} errorResponse
+//	@Router       /api/bot/v1/{service}/chat/active [delete]
+func (h *BotHandler) DeactivateBot(c *gin.Context) {
+	platform := normalizeBotService(c.Param("service"))
+	if platform == "" {
+		h.logger.Warnf("DeactivateBot: unsupported service param %q", c.Param("service"))
+		c.JSON(http.StatusBadRequest, errorResponse{Error: "unsupported service"})
+		return
+	}
+
+	var req deactivateBotRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		h.logger.Warnf("DeactivateBot: bind request: %v", err)
+		c.JSON(http.StatusBadRequest, errorResponse{Error: err.Error()})
+		return
+	}
+	if req.ChatID == "" {
+		h.logger.Warnf("DeactivateBot: missing chat_id")
+		c.JSON(http.StatusBadRequest, errorResponse{Error: "chat_id is required"})
+		return
+	}
+
+	app, err := h.botUC.GetByChatID(c.Request.Context(), platform, req.ChatID)
+	if err != nil {
+		h.logger.Errorf("DeactivateBot telegram lookup error: %v", err)
+		c.JSON(http.StatusInternalServerError, errorResponse{Error: "failed to find bot"})
+		return
+	}
+	if app == nil {
+		c.JSON(http.StatusNotFound, errorResponse{Error: "telegram bot not found for chat"})
+		return
+	}
+	if err := h.botUC.DisableBot(c.Request.Context(), app.ID); err != nil {
+		h.logger.Errorf("DeactivateBot telegram error: %v", err)
+		c.JSON(http.StatusInternalServerError, errorResponse{Error: "failed to deactivate bot"})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"success": true})
+}
+
+// GetVerificationStatus godoc
+//
+//	@Summary      Проверить статус верификации аккаунта
+//	@Description  Возвращает true, если указанный аккаунт верифицирован для текущего пользователя
+//	@Tags         moderator-verification
+//	@Produce      json
+//	@Param        platform   query string true "Платформа (vk, telegram, api)"
+//	@Param        account_id query string true "ID аккаунта на платформе"
+//	@Success      200 {object} verificationStatusResponse
+//	@Failure      400 {object} errorResponse
+//	@Failure      500 {object} errorResponse
+//	@Security     Bearer
+//func (h *BotHandler) GetVerificationStatus(c *gin.Context) {
+//	userID, exists := c.Get("user_id")
+//	if !exists {
+//		c.JSON(http.StatusUnauthorized, errorResponse{Error: "user not authenticated"})
+//		return
+//	}
+//
+//	platform := c.Query("platform")
+//	accountID := c.Query("account_id")
+//	if platform == "" || accountID == "" {
+//		c.JSON(http.StatusBadRequest, errorResponse{Error: "platform and account_id are required"})
+//		return
+//	}
+//
+//	verified, err := h.moderatorService.IsVerified(
+//		c.Request.Context(),
+//		userID.(string),
+//		platform,
+//		accountID,
+//	)
+//	if err != nil {
+//		h.logger.Errorf("GetVerificationStatus error: %v", err)
+//		c.JSON(http.StatusInternalServerError, errorResponse{Error: "failed to check status"})
+//		return
+//	}
+//
+//	c.JSON(http.StatusOK, verificationStatusResponse{
+//		Verified: verified,
+//		Platform: platform,
+//	})
+//}
+
 // ---------- helpers ----------
 
-func queryInt(c *gin.Context, key string, defaultVal int) int {
+func queryInt(c *gin.Context, key string, defaultVal int, l logger.Log) int {
 	if raw := c.Query(key); raw != "" {
 		if v, err := strconv.Atoi(raw); err == nil {
 			return v
+		} else {
+			l.Warnf("invalid query param %s=%q: %v", key, raw, err)
 		}
 	}
 	return defaultVal

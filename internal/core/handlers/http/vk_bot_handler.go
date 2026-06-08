@@ -62,6 +62,7 @@ type vkBotSettingsRequest struct {
 func (h *VkBotHandler) GetToken(c *gin.Context) {
 	userID, exists := c.Get("user_id")
 	if !exists {
+		h.logger.Warnf("Vk GetToken: missing user_id in context")
 		c.JSON(http.StatusUnauthorized, errorResponse{Error: "user not authenticated"})
 		return
 	}
@@ -117,6 +118,7 @@ func (h *VkBotHandler) GetToken(c *gin.Context) {
 func (h *VkBotHandler) GetStatus(c *gin.Context) {
 	token := c.Query("token")
 	if token == "" {
+		h.logger.Warnf("Vk GetStatus: missing token query param")
 		c.JSON(http.StatusBadRequest, errorResponse{Error: "token is required"})
 		return
 	}
@@ -164,6 +166,7 @@ func (h *VkBotHandler) GetSettings(c *gin.Context) {
 	// Получаем ID пользователя из контекста
 	userID, exists := c.Get("user_id")
 	if !exists {
+		h.logger.Warnf("Vk GetSettings: missing user_id in context")
 		c.JSON(http.StatusUnauthorized, errorResponse{Error: "user not authenticated"})
 		return
 	}
@@ -222,6 +225,7 @@ func (h *VkBotHandler) UpdateSettings(c *gin.Context) {
 	// Получаем ID пользователя из контекста
 	userID, exists := c.Get("user_id")
 	if !exists {
+		h.logger.Warnf("Vk UpdateSettings: missing user_id in context")
 		c.JSON(http.StatusUnauthorized, errorResponse{Error: "user not authenticated"})
 		return
 	}
@@ -303,6 +307,7 @@ func (h *VkBotHandler) DisableBot(c *gin.Context) {
 	// Получаем ID пользователя из контекста
 	userID, exists := c.Get("user_id")
 	if !exists {
+		h.logger.Warnf("Vk DisableBot: missing user_id in context")
 		c.JSON(http.StatusUnauthorized, errorResponse{Error: "user not authenticated"})
 		return
 	}
@@ -355,6 +360,7 @@ func (h *VkBotHandler) DisableBot(c *gin.Context) {
 func (h *VkBotHandler) VerifyChat(c *gin.Context) {
 	var req verifyChatRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
+		h.logger.Warnf("Vk VerifyChat: bind request: %v", err)
 		c.JSON(http.StatusBadRequest, errorResponse{Error: err.Error()})
 		return
 	}
@@ -362,6 +368,7 @@ func (h *VkBotHandler) VerifyChat(c *gin.Context) {
 	// Получаем ID пользователя из контекста
 	userID, exists := c.Get("user_id")
 	if !exists {
+		h.logger.Warnf("Vk VerifyChat: missing user_id in context")
 		c.JSON(http.StatusUnauthorized, errorResponse{Error: "user not authenticated"})
 		return
 	}
@@ -441,6 +448,7 @@ func (h *VkBotHandler) IsChatActive(c *gin.Context) {
 func (h *VkBotHandler) GetAdmins(c *gin.Context) {
 	userID, exists := c.Get("user_id")
 	if !exists {
+		h.logger.Warnf("Vk GetAdmins: missing user_id in context")
 		c.JSON(http.StatusUnauthorized, errorResponse{Error: "user not authenticated"})
 		return
 	}
@@ -482,12 +490,14 @@ func (h *VkBotHandler) GetAdmins(c *gin.Context) {
 func (h *VkBotHandler) AddAdmin(c *gin.Context) {
 	userID, exists := c.Get("user_id")
 	if !exists {
+		h.logger.Warnf("Vk AddAdmin: missing user_id in context")
 		c.JSON(http.StatusUnauthorized, errorResponse{Error: "user not authenticated"})
 		return
 	}
 
 	var req addAdminRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
+		h.logger.Warnf("Vk AddAdmin: bind request: %v", err)
 		c.JSON(http.StatusBadRequest, errorResponse{Error: err.Error()})
 		return
 	}
@@ -546,12 +556,14 @@ func (h *VkBotHandler) AddAdmin(c *gin.Context) {
 func (h *VkBotHandler) RemoveAdmin(c *gin.Context) {
 	userID, exists := c.Get("user_id")
 	if !exists {
+		h.logger.Warnf("Vk RemoveAdmin: missing user_id in context")
 		c.JSON(http.StatusUnauthorized, errorResponse{Error: "user not authenticated"})
 		return
 	}
 
 	targetUsername := c.Param("username")
 	if targetUsername == "" {
+		h.logger.Warnf("Vk RemoveAdmin: missing username path param")
 		c.JSON(http.StatusBadRequest, errorResponse{Error: "username is required"})
 		return
 	}
@@ -620,11 +632,13 @@ func (h *VkBotHandler) ActivateBot(c *gin.Context) {
 	chatID := c.Query("chat_id")
 
 	if token == "" {
+		h.logger.Warnf("Vk ActivateBot: missing token query param")
 		c.JSON(http.StatusBadRequest, errorResponse{Error: "token is required"})
 		return
 	}
 
 	if chatID == "" {
+		h.logger.Warnf("Vk ActivateBot: missing chat_id query param")
 		c.JSON(http.StatusBadRequest, errorResponse{Error: "chat_id is required"})
 		return
 	}
