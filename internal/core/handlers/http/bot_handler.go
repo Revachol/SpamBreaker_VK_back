@@ -57,6 +57,11 @@ type deactivateBotRequest struct {
 	ChatID string `json:"chat_id"`
 }
 
+type updateChatNameRequest struct {
+	ChatID string `json:"chat_id" binding:"required"`
+	Name   string `json:"name" binding:"required"`
+}
+
 type verifyUserTokenRequest struct {
 	Token  string `json:"token" binding:"required"`
 	UserID string `json:"user_id" binding:"required"`
@@ -296,7 +301,7 @@ func (h *BotHandler) VerifyUserToken(c *gin.Context) {
 		return
 	}
 
-	err := h.moderatorService.VerifyTelegramAccount(c.Request.Context(), platform, req.Token, req.UserID)
+	err := h.moderatorService.VerifyAccount(c.Request.Context(), platform, req.Token, req.UserID)
 	if err != nil {
 		h.logger.Errorf("VerifyUserToken error: %v", err)
 		switch {
@@ -344,18 +349,7 @@ func (h *BotHandler) ActivateAddChat(c *gin.Context) {
 		return
 	}
 
-	moderatorID, err := h.moderatorService.GetModeratorIDByVerifiedAccount(c.Request.Context(), platform, req.UserID)
-	if err != nil {
-		h.logger.Warnf("ActivateAddChat: unverified user %s: %v", req.UserID, err)
-		c.JSON(http.StatusForbidden, errorResponse{Error: "пользователь не верифицирован"})
-		return
-	}
-	if !req.IsAdmin {
-		c.JSON(http.StatusForbidden, AddChatResponse{Verified: false, Message: "пользователь не является администратором чата"})
-		return
-	}
-
-	if _, err := h.botUC.AddChat(c.Request.Context(), moderatorID, platform, req.ChatID); err != nil {
+	if _, err := h.botUC.AddChat(c.Request.Context(), platform, req.Name, req.UserID, req.ChatID); err != nil {
 		if strings.Contains(err.Error(), "chat already connected") {
 			c.JSON(http.StatusConflict, errorResponse{Error: "чат уже подключён другим модератором"})
 			return
@@ -369,6 +363,91 @@ func (h *BotHandler) ActivateAddChat(c *gin.Context) {
 		Verified: true,
 		Message:  "",
 	})
+}
+
+// ActivateChat godoc
+//
+//	@Summary      Активировать чат бота
+//	@Description  Активирует бота для указанного чата на платформе
+//	@Tags         bot-internal
+//	@Accept       json
+//	@Produce      json
+//	@Param        service path string true "Платформа бота (telegram, vk)"
+//	@Param        body body deactivateBotRequest true "Данные чата"
+//	@Success      200 {object} map[string]bool
+//	@Failure      400 {object} errorResponse
+//	@Failure      404 {object} errorResponse
+//	@Failure      500 {object} errorResponse
+//	@Router       /api/bot/v1/{service}/chat/active [patch]
+func (h *BotHandler) ActivateChat(c *gin.Context) {
+	platform := normalizeBotService(c.Param("service"))
+	if platform == "" {
+		h.logger.Warnf("ActivateChat: unsupported service param %q", c.Param("service"))
+		c.JSON(http.StatusBadRequest, errorResponse{Error: "unsupported service"})
+		return
+	}
+
+	var req deactivateBotRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		h.logger.Warnf("ActivateChat: bind request: %v", err)
+		c.JSON(http.StatusBadRequest, errorResponse{Error: err.Error()})
+		return
+	}
+	if req.ChatID == "" {
+		h.logger.Warnf("ActivateChat: missing chat_id")
+		c.JSON(http.StatusBadRequest, errorResponse{Error: "chat_id is required"})
+		return
+	}
+
+	if err := h.botUC.ActivateBot(c.Request.Context(), platform, req.ChatID); err != nil {
+		h.logger.Errorf("ActivateChat error: %v", err)
+		c.JSON(http.StatusInternalServerError, errorResponse{Error: "failed to activate bot"})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"success": true})
+}
+
+// UpdateChatName godoc
+//
+//	@Summary      Обновить имя чата бота
+//	@Description  Обновляет имя подключённого чата на платформе
+//	@Tags         bot-internal
+//	@Accept       json
+//	@Produce      json
+//	@Param        service path string true "Платформа бота (telegram, vk)"
+//	@Param        body body updateChatNameRequest true "Новое имя чата"
+//	@Success      200 {object} map[string]bool
+//	@Failure      400 {object} errorResponse
+//	@Failure      404 {object} errorResponse
+//	@Failure      500 {object} errorResponse
+//	@Router       /api/bot/v1/{service}/chat/name [patch]
+func (h *BotHandler) UpdateChatName(c *gin.Context) {
+	platform := normalizeBotService(c.Param("service"))
+	if platform == "" {
+		h.logger.Warnf("UpdateChatName: unsupported service param %q", c.Param("service"))
+		c.JSON(http.StatusBadRequest, errorResponse{Error: "unsupported service"})
+		return
+	}
+
+	var req updateChatNameRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		h.logger.Warnf("UpdateChatName: bind request: %v", err)
+		c.JSON(http.StatusBadRequest, errorResponse{Error: err.Error()})
+		return
+	}
+
+	if err := h.botUC.UpdateChatName(c.Request.Context(), platform, req.ChatID, req.Name); err != nil {
+		if strings.Contains(err.Error(), "no application found") {
+			c.JSON(http.StatusNotFound, errorResponse{Error: "bot not found for chat"})
+			return
+		}
+		h.logger.Errorf("UpdateChatName error: %v", err)
+		c.JSON(http.StatusInternalServerError, errorResponse{Error: "failed to update chat name"})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"success": true})
 }
 
 // DeactivateBot godoc
@@ -423,50 +502,6 @@ func (h *BotHandler) DeactivateBot(c *gin.Context) {
 
 	c.JSON(http.StatusOK, gin.H{"success": true})
 }
-
-// GetVerificationStatus godoc
-//
-//	@Summary      Проверить статус верификации аккаунта
-//	@Description  Возвращает true, если указанный аккаунт верифицирован для текущего пользователя
-//	@Tags         moderator-verification
-//	@Produce      json
-//	@Param        platform   query string true "Платформа (vk, telegram, api)"
-//	@Param        account_id query string true "ID аккаунта на платформе"
-//	@Success      200 {object} verificationStatusResponse
-//	@Failure      400 {object} errorResponse
-//	@Failure      500 {object} errorResponse
-//	@Security     Bearer
-//func (h *BotHandler) GetVerificationStatus(c *gin.Context) {
-//	userID, exists := c.Get("user_id")
-//	if !exists {
-//		c.JSON(http.StatusUnauthorized, errorResponse{Error: "user not authenticated"})
-//		return
-//	}
-//
-//	platform := c.Query("platform")
-//	accountID := c.Query("account_id")
-//	if platform == "" || accountID == "" {
-//		c.JSON(http.StatusBadRequest, errorResponse{Error: "platform and account_id are required"})
-//		return
-//	}
-//
-//	verified, err := h.moderatorService.IsVerified(
-//		c.Request.Context(),
-//		userID.(string),
-//		platform,
-//		accountID,
-//	)
-//	if err != nil {
-//		h.logger.Errorf("GetVerificationStatus error: %v", err)
-//		c.JSON(http.StatusInternalServerError, errorResponse{Error: "failed to check status"})
-//		return
-//	}
-//
-//	c.JSON(http.StatusOK, verificationStatusResponse{
-//		Verified: verified,
-//		Platform: platform,
-//	})
-//}
 
 // ---------- helpers ----------
 

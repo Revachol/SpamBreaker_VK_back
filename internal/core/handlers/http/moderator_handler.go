@@ -64,6 +64,7 @@ type userBotResponse struct {
 	ID         string    `json:"id"`
 	ExternalID string    `json:"external_id"`
 	OwnerID    string    `json:"owner_id"`
+	OwnAccID   string    `json:"own_acc_id"`
 	CreatedAt  time.Time `json:"created_at"`
 }
 
@@ -224,6 +225,7 @@ func (h *ModeratorHandler) GetUserBots(c *gin.Context) {
 			ID:         bot.ID,
 			ExternalID: bot.ExternalID,
 			OwnerID:    bot.OwnerID,
+			OwnAccID:   bot.OwnAccID,
 			CreatedAt:  bot.CreatedAt,
 		})
 	}

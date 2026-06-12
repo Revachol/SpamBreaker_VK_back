@@ -44,6 +44,7 @@ type botUCSettingsRequest struct {
 }
 
 type AddChatRequest struct {
+	Name    string `json:"name"`
 	ChatID  string `json:"chat_id" binding:"required"`
 	UserID  string `json:"user_id" binding:"required"`
 	IsAdmin bool   `json:"is_admin" binding:"required"`
@@ -55,96 +56,6 @@ type AddChatResponse struct {
 }
 
 // ---------- Handlers ----------
-
-// GetToken godoc
-//
-//	@Summary      Получить токен для активации Telegram бота
-//	@Description  Генерирует или возвращает существующий токен для Telegram бота пользователя
-//	@Tags         telegram-bot
-//	@Produce      JSON
-//	@Success      200 {object} botUCTokenResponse
-//	@Failure      500 {object} errorResponse
-//	@Security     Bearer
-//func (h *BotManageHandler) GetToken(c *gin.Context) {
-//	userID, exists := c.Get("user_id")
-//	if !exists {
-//		c.JSON(http.StatusUnauthorized, errorResponse{Error: "user not authenticated"})
-//		return
-//	}
-//
-//	apps, err := h.botUC.ListBots(c.Request.Context(), userID.(string))
-//	if err != nil {
-//		h.logger.Errorf("Error listing bots: %s", err)
-//		c.JSON(http.StatusInternalServerError, errorResponse{Error: "failed to list bots"})
-//		return
-//	}
-//
-//	for _, a := range apps {
-//		if a.Platform == "telegram" {
-//			expiresAt := a.CreatedAt.Add(7 * 24 * time.Hour)
-//			c.JSON(http.StatusOK, botUCTokenResponse{
-//				Token:     a.Token,
-//				ExpiresAt: expiresAt.Format(time.RFC3339),
-//				CreatedAt: a.CreatedAt.Format(time.RFC3339),
-//			})
-//			return
-//		}
-//	}
-//
-//	newApp, err := h.botUC.GenerateToken(c.Request.Context(), userID.(string))
-//	if err != nil {
-//		h.logger.Errorf("Error generating token: %s", err)
-//		c.JSON(http.StatusInternalServerError, errorResponse{Error: "failed to generate token"})
-//		return
-//	}
-//
-//	expiresAt := newApp.CreatedAt.Add(7 * 24 * time.Hour)
-//	c.JSON(http.StatusOK, botUCTokenResponse{
-//		Token:     newApp.Token,
-//		ExpiresAt: expiresAt.Format(time.RFC3339),
-//		CreatedAt: newApp.CreatedAt.Format(time.RFC3339),
-//	})
-//}
-
-// GetStatus godoc
-//
-//	@Summary      Получить статус Telegram бота
-//	@Description  Возвращает статус подключения бота по токену
-//	@Tags         telegram-bot
-//	@Produce      json
-//	@Param        token query string true "Токен активации"
-//	@Success      200 {object} botUCStatusResponse
-//	@Failure      400 {object} errorResponse
-//	@Failure      500 {object} errorResponse
-//	@Security     Bearer
-//func (h *BotManageHandler) GetStatus(c *gin.Context) {
-//	ap
-//	if token == "" {
-//		c.JSON(http.StatusBadRequest, errorResponse{Error: "token is required"})
-//		return
-//	}
-//
-//	app, err := h.botUC.GetByToken(c.Request.Context(), token)
-//	if err != nil {
-//		h.logger.Errorf("Error getting application: %s", err)
-//		c.JSON(http.StatusInternalServerError, errorResponse{Error: "failed to get application"})
-//		return
-//	}
-//
-//	if app == nil {
-//		c.JSON(http.StatusOK, botUCStatusResponse{Connected: false})
-//		return
-//	}
-//
-//	resp := botUCStatusResponse{Connected: app.Status == "active"}
-//	if app.ExternalID != "" {
-//		resp.ChatID = app.ExternalID
-//	}
-//	if !app.UpdatedAt.IsZero() && app.Status == "active" {
-//		resp.ActivatedAt = app.UpdatedAt.Format(time.RFC3339)
-//	}
-//	c.JSON(http.StatusOK, resp)
-//}
 
 // GetSettings godoc
 //

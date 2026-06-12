@@ -52,6 +52,8 @@ func NewRouter(
 	{
 		bot.POST("/check", bh.Check)                 // check message
 		bot.POST("/chat/active", bh.ActivateAddChat) // Add bot to chat
+		bot.PATCH("/chat/active", bh.ActivateChat)   // Activate bot in chat
+		bot.PATCH("/chat/name", bh.UpdateChatName)   // Update bot chat name
 		bot.DELETE("/chat/active", bh.DeactivateBot) // Del bot to chat
 		bot.POST("/active", bh.VerifyUserToken)      // Verify user
 	}
