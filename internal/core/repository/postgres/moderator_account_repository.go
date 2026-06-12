@@ -106,7 +106,7 @@ func (r *ModeratorAccountRepo) VerifyAccount(ctx context.Context, id, accID stri
               SET verified_at = NOW(),
                   verification_token = NULL,
                   token_expires_at = NULL,
-                  accoutnt_id = $2
+                  account_id = $2
               WHERE id = $1`
 	tag, err := r.pool.Exec(ctx, query, id, accID)
 	if err != nil {

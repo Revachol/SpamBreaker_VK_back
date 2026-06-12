@@ -90,8 +90,8 @@ func (s *ModeratorService) InitiateVerification(
 	return token, nil
 }
 
-// VerifyTelegramAccount подтверждает Telegram-аккаунт.
-func (s *ModeratorService) VerifyTelegramAccount(ctx context.Context, platform, token, accountID string) error {
+// VerifyAccount подтверждает Telegram-аккаунт.
+func (s *ModeratorService) VerifyAccount(ctx context.Context, platform, token, accountID string) error {
 	account, err := s.moderatorAccountRepo.FindByVerificationToken(ctx, token)
 	if err != nil {
 		if errors.Is(err, expectation.ErrNotFound) {
@@ -109,26 +109,6 @@ func (s *ModeratorService) VerifyTelegramAccount(ctx context.Context, platform, 
 		return errors.New("token expired")
 	}
 	return s.moderatorAccountRepo.VerifyAccount(ctx, account.ID, accountID)
-}
-
-// GetModeratorIDByVerifiedTelegramID возвращает ID модератора, если указанный Telegram ID верифицирован.
-func (s *ModeratorService) GetModeratorIDByVerifiedTelegramID(ctx context.Context, telegramID int64) (string, error) {
-	return s.GetModeratorIDByVerifiedAccount(ctx, "telegram", fmt.Sprintf("%d", telegramID))
-}
-
-// GetModeratorIDByVerifiedAccount возвращает ID модератора, если платформенный аккаунт верифицирован.
-func (s *ModeratorService) GetModeratorIDByVerifiedAccount(ctx context.Context, platform, accountID string) (string, error) {
-	account, err := s.moderatorAccountRepo.FindByPlatformAndAccountID(ctx, platform, accountID)
-	if err != nil {
-		if errors.Is(err, expectation.ErrNotFound) {
-			return "", expectation.ErrNotVerified
-		}
-		return "", err
-	}
-	if account == nil {
-		return "", expectation.ErrNotVerified
-	}
-	return account.ModeratorID, nil
 }
 
 // IsVerified проверяет, верифицирован ли аккаунт на платформе для данного модератора.

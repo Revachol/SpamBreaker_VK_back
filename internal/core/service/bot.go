@@ -42,48 +42,6 @@ func NewBotUseCase(
 	}
 }
 
-// GenerateToken генерирует новый токен для активации Telegram бота.
-func (uc *BotUseCase) GenerateToken(ctx context.Context, ownerID string) (*domain.Application, error) {
-	token, err := generateToken()
-	if err != nil {
-		return nil, err
-	}
-
-	app := &domain.Application{
-		ID:        uuid.New().String(),
-		Name:      "Telegram Bot",
-		Platform:  "telegram",
-		Token:     token,
-		OwnerID:   ownerID,
-		Status:    "inactive",
-		CreatedAt: time.Now().UTC(),
-		UpdatedAt: time.Now().UTC(),
-	}
-
-	if err := uc.applicationRepo.Create(ctx, app); err != nil {
-		return nil, err
-	}
-
-	settings := &domain.ApplicationSettings{
-		ID:                uuid.New().String(),
-		ApplicationID:     app.ID,
-		ToxicityThreshold: 70,
-		ActionOnSpam:      "notify",
-		AutoModerate:      false,
-		NotifyModerator:   true,
-		AllowedLanguages:  nil,
-		CreatedAt:         time.Now().UTC(),
-		UpdatedAt:         time.Now().UTC(),
-	}
-
-	if err := uc.applicationSettingsRepo.Create(ctx, settings); err != nil {
-		_ = uc.applicationRepo.Delete(ctx, app.ID)
-		return nil, err
-	}
-
-	return app, nil
-}
-
 // ActivateBotByChatID активирует бота в чате, проверяя права верифицированного пользователя.
 func (uc *BotUseCase) ActivateBotByChatID(ctx context.Context, token, chatID string, fromUserID int64) error {
 	// 1. Проверяем, что пользователь верифицирован через moderator_account
@@ -116,22 +74,29 @@ func (uc *BotUseCase) ActivateBotByChatID(ctx context.Context, token, chatID str
 	return uc.applicationRepo.Update(ctx, app)
 }
 
-// AddChat создаёт приложение для подключённого чата или реактивирует уже существующее.
-func (uc *BotUseCase) AddChat(ctx context.Context, moderatorID, platform, chatID string) (*domain.Application, error) {
+// AddChat создаёт приложение для подключённого чата или обновляет владельца существующего.
+func (uc *BotUseCase) AddChat(ctx context.Context, platform, name, accID, chatID string) (*domain.Application, error) {
+	acc, err := uc.moderatorAccountRepo.FindByPlatformAndAccountID(ctx, platform, accID)
+	if err != nil {
+		return nil, err
+	}
+	if acc == nil {
+		uc.logger.Warnf("%s account %s not found", platform, accID)
+		return nil, fmt.Errorf("account not found")
+	}
+
 	app, err := uc.applicationRepo.GetByExternalIDAndPlatform(ctx, platform, chatID)
 	if err != nil {
 		return nil, err
 	}
 	if app != nil {
-		if app.OwnerID != "" && app.OwnerID != moderatorID {
+		if app.OwnerID != "" && app.OwnerID != acc.ModeratorID {
 			return nil, fmt.Errorf("chat already connected")
 		}
-		app.OwnerID = moderatorID
-		app.Status = "active"
+		app.Name = name
+		app.OwnerID = acc.ModeratorID
+		app.OwnAccID = acc.ID
 		app.UpdatedAt = time.Now().UTC()
-		if app.VerifiedAt.IsZero() {
-			app.VerifiedAt = time.Now().UTC()
-		}
 		if err := uc.applicationRepo.Update(ctx, app); err != nil {
 			return nil, err
 		}
@@ -146,13 +111,13 @@ func (uc *BotUseCase) AddChat(ctx context.Context, moderatorID, platform, chatID
 	now := time.Now().UTC()
 	app = &domain.Application{
 		ID:         uuid.New().String(),
-		Name:       botApplicationName(platform, chatID),
+		Name:       name,
 		Platform:   platform,
 		ExternalID: chatID,
 		Token:      token,
-		OwnerID:    moderatorID,
-		Status:     "active",
-		VerifiedAt: now,
+		OwnerID:    acc.ModeratorID,
+		OwnAccID:   acc.ID,
+		Status:     "inactive",
 		CreatedAt:  now,
 		UpdatedAt:  now,
 	}
@@ -179,11 +144,6 @@ func (uc *BotUseCase) AddChat(ctx context.Context, moderatorID, platform, chatID
 	return app, nil
 }
 
-// GetByToken получает приложение по токену.
-func (uc *BotUseCase) GetByToken(ctx context.Context, token string) (*domain.Application, error) {
-	return uc.applicationRepo.GetByToken(ctx, token)
-}
-
 // GetSettings получает настройки приложения.
 func (uc *BotUseCase) GetSettings(ctx context.Context, applicationID string) (*domain.ApplicationSettings, error) {
 	return uc.applicationSettingsRepo.GetByApplicationID(ctx, applicationID)
@@ -208,14 +168,40 @@ func (uc *BotUseCase) DisableBot(ctx context.Context, applicationID string) erro
 	return uc.applicationRepo.Update(ctx, app)
 }
 
-// ListBots возвращает ботов владельца.
-func (uc *BotUseCase) ListBots(ctx context.Context, ownerID string) ([]*domain.Application, error) {
-	return uc.applicationRepo.ListByOwner(ctx, ownerID)
+// UpdateChatName обновляет имя подключённого чата.
+func (uc *BotUseCase) UpdateChatName(ctx context.Context, platform, chatID, name string) error {
+	name = strings.TrimSpace(name)
+	if name == "" {
+		return fmt.Errorf("chat name is required")
+	}
+
+	app, err := uc.applicationRepo.GetByExternalIDAndPlatform(ctx, platform, chatID)
+	if err != nil {
+		return err
+	}
+	if app == nil {
+		return fmt.Errorf("no application found")
+	}
+
+	app.Name = name
+	app.UpdatedAt = time.Now().UTC()
+	return uc.applicationRepo.Update(ctx, app)
 }
 
-// ListAccessibleBots возвращает боты, доступные пользователю.
-func (uc *BotUseCase) ListAccessibleBots(ctx context.Context, userID string) ([]*domain.Application, error) {
-	return uc.applicationRepo.ListByOwnerOrAdmin(ctx, userID, "", "")
+// ActivateBot активирует бота.
+func (uc *BotUseCase) ActivateBot(ctx context.Context, platform, chatID string) error {
+	app, err := uc.applicationRepo.GetByExternalIDAndPlatform(ctx, platform, chatID)
+	if err != nil {
+		return err
+	}
+	if app == nil {
+		uc.logger.Warnf("no app with id: %s found for platform: %s", chatID, platform)
+		return errors.New("no application found")
+	}
+	app.Status = "active"
+	app.VerifiedAt = time.Now().UTC()
+	app.UpdatedAt = time.Now().UTC()
+	return uc.applicationRepo.Update(ctx, app)
 }
 
 // GetByChatID возвращает приложение по внешнему ID чата.
@@ -281,17 +267,6 @@ func (uc *BotUseCase) VerifyChat(ctx context.Context, applicationID, chatID stri
 	app.UpdatedAt = time.Now().UTC()
 
 	return uc.applicationRepo.Update(ctx, app)
-}
-
-func botApplicationName(platform, chatID string) string {
-	switch platform {
-	case "vk":
-		return "VK Bot " + chatID
-	case "telegram", "tg":
-		return "Telegram Bot " + chatID
-	default:
-		return "Bot " + chatID
-	}
 }
 
 func generateToken() (string, error) {
