@@ -3,7 +3,10 @@ ALTER TABLE application_admins
         CHECK (role IN ('admin', 'moderator'));
 
 ALTER TABLE moderator
-    DROP COLUMN moderator.role;
+    DROP COLUMN role;
+
+ALTER TABLE application
+    ALTER COLUMN status SET DEFAULT 'inactive';
 
 CREATE TABLE moderator_account
 (
@@ -17,6 +20,9 @@ CREATE TABLE moderator_account
 
     UNIQUE (moderator_id, account_id)
 );
+
+ALTER TABLE application
+    ADD COLUMN own_acc_id UUID REFERENCES moderator_account (id) ON DELETE SET NULL;
 
 COMMENT ON TABLE moderator_account IS 'Учётные записи модераторов на внешних платформах';
 COMMENT ON COLUMN moderator_account.verification_token IS 'Одноразовый токен для подтверждения аккаунта';

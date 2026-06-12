@@ -11,7 +11,7 @@ type ApplicationRepository interface {
 	Create(ctx context.Context, app *domain.Application) error
 	GetByID(ctx context.Context, id string) (*domain.Application, error)
 	GetByToken(ctx context.Context, token string) (*domain.Application, error)
-	GetByExternalIDAndPlatform(ctx context.Context, externalID string, platform string) (*domain.Application, error)
+	GetByExternalIDAndPlatform(ctx context.Context, platform string, externalID string) (*domain.Application, error)
 	Update(ctx context.Context, app *domain.Application) error
 	Delete(ctx context.Context, id string) error
 	ListByOwner(ctx context.Context, ownerID string) ([]*domain.Application, error)

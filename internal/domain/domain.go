@@ -31,6 +31,7 @@ type Application struct {
 	ExternalID string    `json:"external_id"` // ID чата/группы во внешней платформе
 	Token      string    `json:"token"`       // секретный токен для Core API
 	OwnerID    string    `json:"owner_id"`    // ID модератора-владельца
+	OwnAccID   string    `json:"own_acc_id"`  // ID аккаунта модератора, которым подключили бота
 	Status     string    `json:"status"`      // "active", "suspended", "inactive"
 	VerifiedAt time.Time `json:"verified_at"` // время последней успешной верификации
 	CreatedAt  time.Time `json:"created_at"`
