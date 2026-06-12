@@ -13,12 +13,14 @@ import (
 const (
 	activateBot     = "/api/bot/v1/telegram/chat/active"
 	removeBotHandle = "/api/bot/v1/telegram/chat/active"
+	renameChat      = "/api/bot/v1/telegram/chat/name"
 	verifyUser      = "/api/bot/v1/telegram/active"
 	checkMessage    = "/api/bot/v1/telegram/check"
 )
 
 // ActivateRequest — запрос к Core API.
 type ActivateRequest struct {
+	Name   string `json:"name"`
 	UserID string `json:"user_id,omitempty"`
 	ChatID string `json:"chat_id,omitempty"`
 }
@@ -26,6 +28,12 @@ type ActivateRequest struct {
 // DeactivateRequest — запрос на деактивацию чата в Core API.
 type DeactivateRequest struct {
 	ChatID string `json:"chat_id"`
+}
+
+// UpdateChatNameRequest — запрос на обновление имени чата в Core API.
+type UpdateChatNameRequest struct {
+	ChatID string `json:"chat_id"`
+	Name   string `json:"name"`
 }
 
 // VerifyRequest — запрос к Core API.
@@ -67,8 +75,9 @@ func NewAPIClient(baseURL string) *APIClient {
 }
 
 // ActivateChat регистрирует чат после добавления бота.
-func (c *APIClient) ActivateChat(ctx context.Context, userID, chatID int64) error {
+func (c *APIClient) ActivateChat(ctx context.Context, name string, userID, chatID int64) error {
 	body, err := json.Marshal(ActivateRequest{
+		Name:   name,
 		UserID: strconv.FormatInt(userID, 10),
 		ChatID: strconv.FormatInt(chatID, 10),
 	})
@@ -117,6 +126,36 @@ func (c *APIClient) DeactivateChat(ctx context.Context, chatID int64) error {
 
 	if resp.StatusCode != http.StatusOK {
 		return fmt.Errorf("api client: deactivate failed with status %d", resp.StatusCode)
+	}
+
+	return nil
+}
+
+// UpdateChatName обновляет имя подключённого чата в Core API.
+func (c *APIClient) UpdateChatName(ctx context.Context, chatID int64, name string) error {
+	body, err := json.Marshal(UpdateChatNameRequest{
+		ChatID: strconv.FormatInt(chatID, 10),
+		Name:   name,
+	})
+	if err != nil {
+		return err
+	}
+
+	url := fmt.Sprintf("%s%s", c.baseURL, renameChat)
+	req, err := http.NewRequestWithContext(ctx, http.MethodPatch, url, bytes.NewReader(body))
+	if err != nil {
+		return fmt.Errorf("api client: build request: %w", err)
+	}
+	req.Header.Set("Content-Type", "application/json")
+
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return fmt.Errorf("api client: request failed: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return fmt.Errorf("api client: update chat name failed with status %d", resp.StatusCode)
 	}
 
 	return nil

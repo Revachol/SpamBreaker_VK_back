@@ -66,6 +66,11 @@ func (b *Bot) handleMessage(msg *tgbotapi.Message) {
 	chatID := msg.Chat.ID
 	text := strings.TrimSpace(msg.Text)
 
+	if msg.NewChatTitle != "" {
+		b.handleChatRenamed(msg)
+		return
+	}
+
 	if msg.IsCommand() {
 		b.handleCommand(msg)
 		return
@@ -110,6 +115,20 @@ func (b *Bot) handleMessage(msg *tgbotapi.Message) {
 	}
 }
 
+// handleChatRenamed обрабатывает событие переименования чата или группы.
+func (b *Bot) handleChatRenamed(msg *tgbotapi.Message) {
+	if !msg.Chat.IsGroup() && !msg.Chat.IsSuperGroup() {
+		return
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	if err := b.client.UpdateChatName(ctx, msg.Chat.ID, msg.NewChatTitle); err != nil {
+		b.logger.Warnf("UpdateChatName failed for chat=%d name=%q: %v", msg.Chat.ID, msg.NewChatTitle, err)
+	}
+}
+
 // handleChatMemberChanged обрабатывает добавление и удаление бота из чата.
 func (b *Bot) handleChatMemberChanged(update *tgbotapi.ChatMemberUpdated) {
 	switch update.NewChatMember.Status {
@@ -151,7 +170,7 @@ func (b *Bot) handleChatAdded(update *tgbotapi.ChatMemberUpdated) {
 		return
 	}
 
-	err = b.client.ActivateChat(ctx, fromUser.ID, chatID)
+	err = b.client.ActivateChat(ctx, update.Chat.Title, fromUser.ID, chatID)
 	if err != nil {
 		b.logger.Warnf("VerifyAddChat failed for chat=%d, user=%d: %v", chatID, fromUser.ID, err)
 		return
