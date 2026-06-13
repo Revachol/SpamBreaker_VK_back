@@ -9,8 +9,13 @@ import (
 
 func LogMiddleware(log logger.Log) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		start := time.Now()
 		path := c.Request.URL.Path
+		if path == "/health" || path == "/metrics" {
+			c.Next()
+			return
+		}
+
+		start := time.Now()
 		rawQuery := c.Request.URL.RawQuery
 
 		// Обработка запроса

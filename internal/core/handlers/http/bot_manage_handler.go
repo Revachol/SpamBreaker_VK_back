@@ -57,10 +57,9 @@ type botInfoResponse struct {
 }
 
 type AddChatRequest struct {
-	Name    string `json:"name"`
-	ChatID  string `json:"chat_id" binding:"required"`
-	UserID  string `json:"user_id" binding:"required"`
-	IsAdmin bool   `json:"is_admin" binding:"required"`
+	Name   string `json:"name"`
+	ChatID string `json:"chat_id" binding:"required"`
+	UserID string `json:"user_id" binding:"required"`
 }
 
 type AddChatResponse struct {

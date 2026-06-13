@@ -12,7 +12,6 @@ import (
 const (
 	CtxModeratorID = "moderator_id"
 	CtxUsername    = "moderator_username"
-	CtxRole        = "moderator_role"
 )
 
 // User ID key for context
@@ -49,7 +48,6 @@ func JWTMiddleware(jwtManager *jwtpkg.Manager) gin.HandlerFunc {
 		c.Set(CtxModeratorID, claims.ModeratorID)
 		c.Set(CtxUserID, claims.ModeratorID) // For backward compatibility with existing handlers
 		c.Set(CtxUsername, claims.Username)
-		c.Set(CtxRole, claims.Role)
 		c.Next()
 	}
 }

@@ -35,7 +35,6 @@ type authResponse struct {
 	Token    string `json:"token"`
 	ID       string `json:"id"`
 	Username string `json:"username"`
-	Role     string `json:"role"`
 }
 
 // --- Handlers ---
@@ -72,7 +71,6 @@ func (h *AuthHandler) Register(c *gin.Context) {
 		Token:    result.Token,
 		ID:       result.Moderator.ID,
 		Username: result.Moderator.Username,
-		Role:     result.Moderator.Role,
 	})
 }
 
@@ -107,6 +105,5 @@ func (h *AuthHandler) Login(c *gin.Context) {
 		Token:    result.Token,
 		ID:       result.Moderator.ID,
 		Username: result.Moderator.Username,
-		Role:     result.Moderator.Role,
 	})
 }

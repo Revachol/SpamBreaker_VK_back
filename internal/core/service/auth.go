@@ -86,7 +86,6 @@ func (uc *AuthUseCase) Register(ctx context.Context, input RegisterInput) (*Auth
 		ID:           uuid.NewString(),
 		Username:     input.Username,
 		PasswordHash: string(hash),
-		Role:         "moderator",
 		IsActive:     true,
 	}
 
@@ -94,7 +93,7 @@ func (uc *AuthUseCase) Register(ctx context.Context, input RegisterInput) (*Auth
 		return nil, fmt.Errorf("register: save moderator: %w", err)
 	}
 
-	token, err := uc.jwtManager.Generate(mod.ID, mod.Username, mod.Role)
+	token, err := uc.jwtManager.Generate(mod.ID, mod.Username)
 	if err != nil {
 		uc.logger.Errorf("Error generating token: %s", err)
 		return nil, fmt.Errorf("register: generate token: %w", err)
@@ -130,7 +129,7 @@ func (uc *AuthUseCase) Login(ctx context.Context, input LoginInput) (*AuthResult
 		return nil, fmt.Errorf("invalid credentials")
 	}
 
-	token, err := uc.jwtManager.Generate(mod.ID, mod.Username, mod.Role)
+	token, err := uc.jwtManager.Generate(mod.ID, mod.Username)
 	if err != nil {
 		uc.logger.Errorf("Error generating token: %s", err)
 		return nil, fmt.Errorf("login: generate token: %w", err)

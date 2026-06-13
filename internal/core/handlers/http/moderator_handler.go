@@ -32,11 +32,6 @@ func NewModeratorHandler(
 
 // ---------- DTOs ----------
 
-// Верификация модератора
-type initiateVerificationRequest struct {
-	AccountID string `json:"account_id" binding:"required"`
-}
-
 type initiateVerificationResponse struct {
 	Token       string `json:"token"`
 	ExpiresAt   string `json:"expires_at"`
@@ -96,7 +91,7 @@ type userBotResponse struct {
 //	@Security     Bearer
 func (h *ModeratorHandler) InitiateVerification(c *gin.Context) {
 	userID, exists := c.Get("user_id")
-	platform := c.Param("platform")
+	platform := c.Param("service")
 	if !exists {
 		h.logger.Warnf("InitiateVerification: missing user_id in context")
 		c.JSON(http.StatusUnauthorized, errorResponse{Error: "user not authenticated"})
@@ -105,13 +100,6 @@ func (h *ModeratorHandler) InitiateVerification(c *gin.Context) {
 	if platform == "" {
 		h.logger.Warnf("InitiateVerification: missing platform path param")
 		c.JSON(http.StatusBadRequest, errorResponse{Error: "platform is required"})
-		return
-	}
-
-	var req initiateVerificationRequest
-	if err := c.ShouldBindJSON(&req); err != nil {
-		h.logger.Warnf("InitiateVerification: bind request: %v", err)
-		c.JSON(http.StatusBadRequest, errorResponse{Error: err.Error()})
 		return
 	}
 

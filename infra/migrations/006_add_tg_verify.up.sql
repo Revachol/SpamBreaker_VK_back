@@ -3,7 +3,7 @@ ALTER TABLE application_admins
         CHECK (role IN ('admin', 'moderator'));
 
 ALTER TABLE moderator
-    DROP COLUMN role;
+    DROP COLUMN IF EXISTS role;
 
 ALTER TABLE application
     ALTER COLUMN status SET DEFAULT 'inactive';
