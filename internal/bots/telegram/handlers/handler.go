@@ -37,7 +37,7 @@ func (b *Bot) Run(coll botmetrics.BotMetricsIface) {
 	})
 
 	for update := range updates {
-		// Обработка my_chat_member (бот добавлен или удалён из чата)
+		// Обработка my_chat_member (бот добавлен, получил права администратора или удалён из чата)
 		if update.MyChatMember != nil {
 			b.handleChatMemberChanged(update.MyChatMember)
 			continue
@@ -129,19 +129,56 @@ func (b *Bot) handleChatRenamed(msg *tgbotapi.Message) {
 	}
 }
 
-// handleChatMemberChanged обрабатывает добавление и удаление бота из чата.
+// handleChatMemberChanged обрабатывает изменение статуса самого бота в чате.
 func (b *Bot) handleChatMemberChanged(update *tgbotapi.ChatMemberUpdated) {
-	switch update.NewChatMember.Status {
-	case "member":
+	oldStatus := update.OldChatMember.Status
+	newStatus := update.NewChatMember.Status
+
+	switch {
+	case isBotJoinedChat(oldStatus, newStatus):
 		b.handleChatAdded(update)
-	case "kicked":
+	case isBotPromoted(oldStatus, newStatus):
+		b.handleChatPromoted(update)
+	case isBotRemoved(newStatus):
 		b.handleChatRemoved(update)
 	}
 }
 
+func isBotJoinedChat(oldStatus, newStatus string) bool {
+	return (oldStatus == "left" || oldStatus == "kicked") && (newStatus == "member" || newStatus == "administrator")
+}
+
+func isBotPromoted(oldStatus, newStatus string) bool {
+	return oldStatus != "administrator" && newStatus == "administrator"
+}
+
+func isBotDemoted(oldStatus, newStatus string) bool {
+	return oldStatus == "administrator" && newStatus == "member"
+}
+
+func isBotRemoved(newStatus string) bool {
+	return newStatus == "left" || newStatus == "kicked"
+}
+
+// handleChatPromoted обрабатывает выдачу боту прав администратора.
+func (b *Bot) handleChatPromoted(update *tgbotapi.ChatMemberUpdated) {
+	chatID := update.Chat.ID
+
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	if err := b.client.ActivateChat(ctx, chatID); err != nil {
+		b.logger.Warnf("ActivateAddedChat failed for chat=%d: %v", chatID, err)
+		return
+	}
+
+	msg := tgbotapi.NewMessage(chatID, "✅ Права администратора получены. Модерация сообщений активирована.")
+	b.api.Send(msg) //nolint:errcheck
+}
+
 // handleChatAdded обрабатывает событие добавления бота в чат.
 func (b *Bot) handleChatAdded(update *tgbotapi.ChatMemberUpdated) {
-	if update.NewChatMember.Status != "member" {
+	if update.NewChatMember.Status != "member" && update.NewChatMember.Status != "administrator" {
 		return
 	}
 	chatID := update.Chat.ID
@@ -159,7 +196,7 @@ func (b *Bot) handleChatAdded(update *tgbotapi.ChatMemberUpdated) {
 	if err != nil {
 		b.logger.Warnf("GetChatMember failed for chat=%d, user=%d: %v", chatID, fromUser.ID, err)
 	}
-	if !member.IsAdministrator() {
+	if !(member.IsAdministrator() || member.IsCreator()) {
 		// Отправляем предупреждение в чат и выходим
 		warn := tgbotapi.NewMessage(chatID,
 			"⛔ Бот может быть добавлен только верифицированным администратором. Пожалуйста, подтвердите аккаунт в приложении и убедитесь, что вы администратор этой группы.")
@@ -170,7 +207,7 @@ func (b *Bot) handleChatAdded(update *tgbotapi.ChatMemberUpdated) {
 		return
 	}
 
-	err = b.client.ActivateChat(ctx, update.Chat.Title, fromUser.ID, chatID)
+	err = b.client.ActivateAddChat(ctx, update.Chat.Title, fromUser.ID, chatID)
 	if err != nil {
 		b.logger.Warnf("VerifyAddChat failed for chat=%d, user=%d: %v", chatID, fromUser.ID, err)
 		return
@@ -180,6 +217,10 @@ func (b *Bot) handleChatAdded(update *tgbotapi.ChatMemberUpdated) {
 	welcome := tgbotapi.NewMessage(chatID,
 		"✅ Бот SpamBreaker успешно активирован!")
 	b.api.Send(welcome) //nolint:errcheck
+
+	if update.NewChatMember.Status == "administrator" {
+		b.handleChatPromoted(update)
+	}
 }
 
 // handleChatRemoved обрабатывает событие удаления бота из чата.

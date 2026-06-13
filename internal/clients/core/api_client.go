@@ -11,6 +11,7 @@ import (
 )
 
 const (
+	activateAddBot  = "/api/bot/v1/telegram/chat/active"
 	activateBot     = "/api/bot/v1/telegram/chat/active"
 	removeBotHandle = "/api/bot/v1/telegram/chat/active"
 	renameChat      = "/api/bot/v1/telegram/chat/name"
@@ -75,7 +76,7 @@ func NewAPIClient(baseURL string) *APIClient {
 }
 
 // ActivateChat регистрирует чат после добавления бота.
-func (c *APIClient) ActivateChat(ctx context.Context, name string, userID, chatID int64) error {
+func (c *APIClient) ActivateAddChat(ctx context.Context, name string, userID, chatID int64) error {
 	body, err := json.Marshal(ActivateRequest{
 		Name:   name,
 		UserID: strconv.FormatInt(userID, 10),
@@ -84,7 +85,7 @@ func (c *APIClient) ActivateChat(ctx context.Context, name string, userID, chatI
 	if err != nil {
 		return err
 	}
-	url := fmt.Sprintf("%s%s", c.baseURL, activateBot)
+	url := fmt.Sprintf("%s%s", c.baseURL, activateAddBot)
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, url, bytes.NewReader(body))
 	if err != nil {
 		return fmt.Errorf("api client: build request: %w", err)
@@ -126,6 +127,33 @@ func (c *APIClient) DeactivateChat(ctx context.Context, chatID int64) error {
 
 	if resp.StatusCode != http.StatusOK {
 		return fmt.Errorf("api client: deactivate failed with status %d", resp.StatusCode)
+	}
+
+	return nil
+}
+
+// ActivateAddedChat активирует уже подключённый чат после выдачи боту прав администратора.
+func (c *APIClient) ActivateChat(ctx context.Context, chatID int64) error {
+	body, err := json.Marshal(DeactivateRequest{ChatID: strconv.FormatInt(chatID, 10)})
+	if err != nil {
+		return err
+	}
+
+	url := fmt.Sprintf("%s%s", c.baseURL, activateBot)
+	req, err := http.NewRequestWithContext(ctx, http.MethodPatch, url, bytes.NewReader(body))
+	if err != nil {
+		return fmt.Errorf("api client: build request: %w", err)
+	}
+	req.Header.Set("Content-Type", "application/json")
+
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return fmt.Errorf("api client: request failed: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return fmt.Errorf("api client: activate added chat failed with status %d", resp.StatusCode)
 	}
 
 	return nil
