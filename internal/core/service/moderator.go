@@ -131,6 +131,33 @@ func (s *ModeratorService) ListModeratorAccounts(ctx context.Context, moderatorI
 	return s.moderatorAccountRepo.ListByModeratorID(ctx, moderatorID, platform, active)
 }
 
+// GetModeratorAccountInfo возвращает аккаунт модератора, если он принадлежит текущему пользователю.
+func (s *ModeratorService) GetModeratorAccountInfo(ctx context.Context, moderatorID, accID string) (*domain.ModeratorAccount, error) {
+	account, err := s.moderatorAccountRepo.FindByID(ctx, accID)
+	if err != nil {
+		return nil, err
+	}
+	if account == nil || account.ModeratorID != moderatorID {
+		return nil, fmt.Errorf("forbidden")
+	}
+	return account, nil
+}
+
+// GetOwnedAppInfo возвращает приложение, если текущий пользователь является владельцем.
+func (s *ModeratorService) GetOwnedAppInfo(ctx context.Context, userID, appID string) (*domain.Application, error) {
+	app, err := s.applicationRepo.GetByID(ctx, appID)
+	if err != nil {
+		return nil, err
+	}
+	if app == nil {
+		return nil, fmt.Errorf("not found")
+	}
+	if app.OwnerID != userID {
+		return nil, fmt.Errorf("forbidden")
+	}
+	return app, nil
+}
+
 // ListUserBots возвращает приложения, к которым пользователь относится как владелец или соадмин.
 func (s *ModeratorService) ListUserBots(ctx context.Context, userID, platform, role string) ([]*domain.Application, error) {
 	switch role {

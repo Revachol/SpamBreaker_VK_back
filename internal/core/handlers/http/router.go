@@ -69,13 +69,14 @@ func NewRouter(
 		{
 			user.POST("/:service/verify", mh.InitiateVerification)
 			user.GET("/account", mh.GetModeratorAccounts)
+			user.GET("/account/:accID", mh.GetModeratorAccountInfo)
 			user.GET("/bot", mh.GetUserBots)
 		}
 
 		// Telegram bot routes
 		bots := v1.Group("/bot/:appID")
 		{
-			//bots.GET("/", bmh.GetStatus)
+			bots.GET("/", bmh.GetInfo)
 			bots.GET("/admin", mh.GetAdmins)
 			bots.POST("/admin", mh.AddAdmin)
 			bots.DELETE("/admin/:username", mh.RemoveAdmin)

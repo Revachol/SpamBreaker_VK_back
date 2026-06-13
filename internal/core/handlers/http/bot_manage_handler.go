@@ -43,6 +43,19 @@ type botUCSettingsRequest struct {
 	Enabled     *bool     `json:"enabled,omitempty"`
 }
 
+type botInfoResponse struct {
+	Name       string    `json:"name"`
+	ID         string    `json:"id"`
+	Platform   string    `json:"platform"`
+	ExternalID string    `json:"external_id"`
+	OwnerID    string    `json:"owner_id"`
+	OwnAccID   string    `json:"own_acc_id"`
+	Status     string    `json:"status"`
+	VerifiedAt time.Time `json:"verified_at"`
+	CreatedAt  time.Time `json:"created_at"`
+	UpdatedAt  time.Time `json:"updated_at"`
+}
+
 type AddChatRequest struct {
 	Name    string `json:"name"`
 	ChatID  string `json:"chat_id" binding:"required"`
@@ -56,6 +69,63 @@ type AddChatResponse struct {
 }
 
 // ---------- Handlers ----------
+
+// GetInfo godoc
+//
+//	@Summary      Получить информацию о боте
+//	@Description  Возвращает приложение по ID, если текущий пользователь является владельцем
+//	@Tags         telegram-bot
+//	@Produce      json
+//	@Param        appID path string true "ID приложения"
+//	@Success      200 {object} botInfoResponse
+//	@Failure      400 {object} errorResponse
+//	@Failure      401 {object} errorResponse
+//	@Failure      403 {object} errorResponse
+//	@Failure      404 {object} errorResponse
+//	@Failure      500 {object} errorResponse
+//	@Router       /api/v1/bot/{appID}/ [get]
+//	@Security     Bearer
+func (h *BotManageHandler) GetInfo(c *gin.Context) {
+	userID, exists := c.Get("user_id")
+	if !exists {
+		h.logger.Warnf("GetInfo: missing user_id in context")
+		c.JSON(http.StatusUnauthorized, errorResponse{Error: "user not authenticated"})
+		return
+	}
+	appID := c.Param("appID")
+	if appID == "" {
+		h.logger.Warnf("GetInfo: missing appID path param")
+		c.JSON(http.StatusBadRequest, errorResponse{Error: "appID is required"})
+		return
+	}
+
+	app, err := h.moderator.GetOwnedAppInfo(c.Request.Context(), userID.(string), appID)
+	if err != nil {
+		switch err.Error() {
+		case "forbidden":
+			c.JSON(http.StatusForbidden, errorResponse{Error: "bot does not belong to current user"})
+		case "not found":
+			c.JSON(http.StatusNotFound, errorResponse{Error: "bot not found"})
+		default:
+			h.logger.Errorf("GetInfo error: %v", err)
+			c.JSON(http.StatusInternalServerError, errorResponse{Error: "failed to get bot info"})
+		}
+		return
+	}
+
+	c.JSON(http.StatusOK, botInfoResponse{
+		Name:       app.Name,
+		ID:         app.ID,
+		Platform:   app.Platform,
+		ExternalID: app.ExternalID,
+		OwnerID:    app.OwnerID,
+		OwnAccID:   app.OwnAccID,
+		Status:     app.Status,
+		VerifiedAt: app.VerifiedAt,
+		CreatedAt:  app.CreatedAt,
+		UpdatedAt:  app.UpdatedAt,
+	})
+}
 
 // GetSettings godoc
 //
@@ -108,8 +178,8 @@ func (h *BotManageHandler) GetSettings(c *gin.Context) {
 //	@Summary      Обновить настройки Telegram бота
 //	@Description  Обновляет настройки активного Telegram бота
 //	@Tags         telegram-bot
-//	@Accept       JSON
-//	@Produce      JSON
+//	@Accept       json
+//	@Produce      json
 //	@Param        appID path string true "ID приложения"
 //	@Param        body body botUCSettingsRequest true "Новые настройки"
 //	@Success      200 {object} botUCSettingsResponse
@@ -181,7 +251,7 @@ func (h *BotManageHandler) UpdateSettings(c *gin.Context) {
 //	@Summary      Отключить Telegram бота
 //	@Description  Деактивирует активного Telegram бота пользователя
 //	@Tags         telegram-bot
-//	@Produce      JSON
+//	@Produce      json
 //	@Param        appID path string true "ID приложения"
 //	@Success      200 {object} map[string]bool
 //	@Failure      404 {object} errorResponse

@@ -59,6 +59,15 @@ type moderatorAccountResponse struct {
 	VerifiedAt *time.Time `json:"verified_at"`
 }
 
+type moderatorAccountInfoResponse struct {
+	ID             string     `json:"id"`
+	ModeratorID    string     `json:"moderator_id"`
+	Platform       string     `json:"platform"`
+	AccountID      *string    `json:"account_id"`
+	TokenExpiresAt *time.Time `json:"token_expires_at"`
+	VerifiedAt     *time.Time `json:"verified_at"`
+}
+
 type userBotResponse struct {
 	Name       string    `json:"name"`
 	ID         string    `json:"id"`
@@ -178,6 +187,59 @@ func (h *ModeratorHandler) GetModeratorAccounts(c *gin.Context) {
 		})
 	}
 	c.JSON(http.StatusOK, resp)
+}
+
+// GetModeratorAccountInfo godoc
+//
+//	@Summary      Получить аккаунт модератора
+//	@Description  Возвращает платформенный аккаунт текущего модератора по ID
+//	@Tags         moderator-verification
+//	@Produce      json
+//	@Param        accID path string true "ID аккаунта модератора"
+//	@Success      200 {object} moderatorAccountInfoResponse
+//	@Failure      400 {object} errorResponse
+//	@Failure      401 {object} errorResponse
+//	@Failure      403 {object} errorResponse
+//	@Failure      404 {object} errorResponse
+//	@Failure      500 {object} errorResponse
+//	@Router       /api/v1/user/account/{accID} [get]
+//	@Security     Bearer
+func (h *ModeratorHandler) GetModeratorAccountInfo(c *gin.Context) {
+	userID, exists := c.Get("user_id")
+	if !exists {
+		h.logger.Warnf("GetModeratorAccountInfo: missing user_id in context")
+		c.JSON(http.StatusUnauthorized, errorResponse{Error: "user not authenticated"})
+		return
+	}
+	accID := c.Param("accID")
+	if accID == "" {
+		h.logger.Warnf("GetModeratorAccountInfo: missing accID path param")
+		c.JSON(http.StatusBadRequest, errorResponse{Error: "accID is required"})
+		return
+	}
+
+	account, err := h.moderatorService.GetModeratorAccountInfo(c.Request.Context(), userID.(string), accID)
+	if err != nil {
+		switch err.Error() {
+		case "forbidden":
+			c.JSON(http.StatusForbidden, errorResponse{Error: "account does not belong to current user"})
+		case "moderator_account not found":
+			c.JSON(http.StatusNotFound, errorResponse{Error: "account not found"})
+		default:
+			h.logger.Errorf("GetModeratorAccountInfo error: %v", err)
+			c.JSON(http.StatusInternalServerError, errorResponse{Error: "failed to get moderator account"})
+		}
+		return
+	}
+
+	c.JSON(http.StatusOK, moderatorAccountInfoResponse{
+		ID:             account.ID,
+		ModeratorID:    account.ModeratorID,
+		Platform:       account.Platform,
+		AccountID:      account.AccountID,
+		TokenExpiresAt: account.TokenExpiresAt,
+		VerifiedAt:     account.VerifiedAt,
+	})
 }
 
 // GetUserBots godoc
