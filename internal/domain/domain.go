@@ -38,6 +38,13 @@ type Application struct {
 	UpdatedAt  time.Time `json:"updated_at"`
 }
 
+type ApplicationAdminInfo struct {
+	ID        string    `json:"id"`
+	Username  string    `json:"username"`
+	Role      string    `json:"role"`
+	CreatedAt time.Time `json:"created_at"`
+}
+
 // ApplicationSettings — настройки приложения.
 type ApplicationSettings struct {
 	ID                string    `json:"id"`

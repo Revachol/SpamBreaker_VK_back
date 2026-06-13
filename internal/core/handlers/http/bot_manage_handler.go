@@ -91,7 +91,7 @@ func (h *BotManageHandler) GetInfo(c *gin.Context) {
 		c.JSON(http.StatusUnauthorized, errorResponse{Error: "user not authenticated"})
 		return
 	}
-	appID := c.Param("appID")
+	appID := c.Param("app_id")
 	if appID == "" {
 		h.logger.Warnf("GetInfo: missing appID path param")
 		c.JSON(http.StatusBadRequest, errorResponse{Error: "appID is required"})

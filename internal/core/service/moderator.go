@@ -100,7 +100,7 @@ func (s *ModeratorService) VerifyAccount(ctx context.Context, platform, token, a
 		return err
 	}
 	if account.Platform != platform {
-		return errors.New("invalid token")
+		return errors.New("invalid platform")
 	}
 	if account.VerifiedAt != nil {
 		return errors.New("account already verified")
@@ -229,22 +229,8 @@ func (s *ModeratorService) RemoveAdmin(ctx context.Context, ownerID, appID, targ
 }
 
 // GetAdmins возвращает список соадминов приложения.
-func (s *ModeratorService) GetAdmins(ctx context.Context, appID string) ([]*domain.Moderator, error) {
-	ids, err := s.applicationRepo.ListAdminIDs(ctx, appID)
-	if err != nil {
-		return nil, err
-	}
-	var admins []*domain.Moderator
-	for _, id := range ids {
-		mod, err := s.moderatorRepo.GetByID(ctx, id)
-		if err != nil {
-			return nil, err
-		}
-		if mod != nil {
-			admins = append(admins, mod)
-		}
-	}
-	return admins, nil
+func (s *ModeratorService) GetAdmins(ctx context.Context, appID string) ([]domain.ApplicationAdminInfo, error) {
+	return s.applicationRepo.ListAdmins(ctx, appID)
 }
 
 func generateVerificationToken() (string, error) {

@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/Revachol/SpamBreaker_VK_back/internal/core/service"
+	"github.com/Revachol/SpamBreaker_VK_back/internal/domain"
 	"github.com/Revachol/SpamBreaker_VK_back/pkg/logger"
 	"github.com/gin-gonic/gin"
 )
@@ -36,11 +37,6 @@ type initiateVerificationResponse struct {
 	Token       string `json:"token"`
 	ExpiresAt   string `json:"expires_at"`
 	Instruction string `json:"instruction"`
-}
-
-type adminInfoResponse struct {
-	ID       string `json:"id"`
-	Username string `json:"username"`
 }
 
 type addAdminRequest struct {
@@ -309,9 +305,14 @@ func (h *ModeratorHandler) GetAdmins(c *gin.Context) {
 		return
 	}
 
-	resp := make([]adminInfoResponse, 0, len(admins))
-	for _, m := range admins {
-		resp = append(resp, adminInfoResponse{ID: m.ID, Username: m.Username})
+	resp := make([]domain.ApplicationAdminInfo, 0, len(admins))
+	for _, admin := range admins {
+		resp = append(resp, domain.ApplicationAdminInfo{
+			ID:        admin.ID,
+			Username:  admin.Username,
+			Role:      admin.Role,
+			CreatedAt: admin.CreatedAt,
+		})
 	}
 	c.JSON(http.StatusOK, resp)
 }
@@ -353,7 +354,7 @@ func (h *ModeratorHandler) AddAdmin(c *gin.Context) {
 		return
 	}
 
-	added, err := h.moderatorService.AddAdmin(c.Request.Context(), userID.(string), appID, req.Username)
+	_, err := h.moderatorService.AddAdmin(c.Request.Context(), userID.(string), appID, req.Username)
 	if err != nil {
 		switch err.Error() {
 		case "forbidden":
@@ -368,14 +369,7 @@ func (h *ModeratorHandler) AddAdmin(c *gin.Context) {
 		}
 		return
 	}
-
-	admins, _ := h.moderatorService.GetAdmins(c.Request.Context(), appID)
-	resp := make([]adminInfoResponse, 0, len(admins))
-	for _, m := range admins {
-		resp = append(resp, adminInfoResponse{ID: m.ID, Username: m.Username})
-	}
-	c.JSON(http.StatusOK, resp)
-	_ = added
+	c.JSON(http.StatusOK, gin.H{})
 }
 
 // RemoveAdmin godoc

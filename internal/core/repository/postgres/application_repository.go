@@ -407,9 +407,15 @@ func (r *ApplicationRepository) RemoveAdmin(ctx context.Context, appID, moderato
 	return err
 }
 
-// ListAdminIDs возвращает список ID модераторов-соадминов приложения.
-func (r *ApplicationRepository) ListAdminIDs(ctx context.Context, appID string) ([]string, error) {
-	query := `SELECT moderator_id FROM application_admins WHERE application_id = $1`
+// ListAdmins возвращает список соадминов приложения с ролью и датой добавления.
+func (r *ApplicationRepository) ListAdmins(ctx context.Context, appID string) ([]domain.ApplicationAdminInfo, error) {
+	query := `
+		SELECT m.id, m.username, aa.role, aa.created_at
+		FROM application_admins aa
+		JOIN moderator m ON m.id = aa.moderator_id
+		WHERE aa.application_id = $1
+		ORDER BY aa.created_at DESC
+	`
 
 	parsedAppID, err := uuid.Parse(appID)
 	if err != nil {
@@ -423,16 +429,18 @@ func (r *ApplicationRepository) ListAdminIDs(ctx context.Context, appID string) 
 	}
 	defer rows.Close()
 
-	var ids []string
+	var admins []domain.ApplicationAdminInfo
 	for rows.Next() {
+		var admin domain.ApplicationAdminInfo
 		var modID uuid.UUID
-		if err := rows.Scan(&modID); err != nil {
+		if err := rows.Scan(&modID, &admin.Username, &admin.Role, &admin.CreatedAt); err != nil {
 			return nil, err
 		}
-		ids = append(ids, modID.String())
+		admin.ID = modID.String()
+		admins = append(admins, admin)
 	}
 
-	return ids, rows.Err()
+	return admins, rows.Err()
 }
 
 // ListByOwner возвращает список приложений владельца.
