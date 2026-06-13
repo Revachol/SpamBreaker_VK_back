@@ -85,7 +85,7 @@ func (b *Bot) handleMessage(msg *tgbotapi.Message) {
 		ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 		defer cancel()
 
-		result, err := b.client.CheckMessage(ctx, text, strconv.FormatInt(chatID, 10))
+		result, err := b.client.CheckMessage(ctx, text, strconv.FormatInt(chatID, 10), strconv.Itoa(msg.MessageID))
 		if err != nil {
 			b.logger.Errorf("chat=%d text=%q check error: %v", chatID, text, err)
 			return

@@ -36,12 +36,14 @@ func NewBotHandler(
 // ---------- DTOs ----------
 
 type checkRequest struct {
-	Text   string `json:"text" binding:"required"`
-	ChatID string `json:"chat_id,omitempty"`
+	Text      string `json:"text" binding:"required"`
+	ChatID    string `json:"chat_id,omitempty"`
+	MessageID string `json:"message_id,omitempty"`
 }
 
 type checkResponse struct {
 	ID         string             `json:"id"`
+	MessageID  string             `json:"message_id,omitempty"`
 	Text       string             `json:"text"`
 	Label      string             `json:"label"`
 	Confidence float64            `json:"confidence"`
@@ -123,10 +125,10 @@ func (h *BotHandler) Check(c *gin.Context) {
 		h.logger.Warnf("Check: chat_id=%q -> no matching application found", req.ChatID)
 	}
 	if app.Status != "active" {
-		c.JSON(http.Ok, errorResponse{Error: "application is not active"})
+		c.JSON(http.StatusNoContent, gin.H{})
 	}
 
-	record, err := h.moderation.CheckText(c.Request.Context(), req.Text, app.ID)
+	record, err := h.moderation.CheckText(c.Request.Context(), req.Text, app.ID, req.MessageID)
 	if err != nil {
 		status := http.StatusBadRequest
 		if isUpstreamError(err) {
@@ -139,6 +141,7 @@ func (h *BotHandler) Check(c *gin.Context) {
 
 	c.JSON(http.StatusOK, checkResponse{
 		ID:         record.ID,
+		MessageID:  record.MessageID,
 		Text:       record.Text,
 		Label:      record.Verdict.Label,
 		Confidence: record.Verdict.Confidence,
@@ -195,6 +198,7 @@ func (h *BotHandler) GetBotHistory(c *gin.Context) {
 	for _, r := range records {
 		resp = append(resp, checkResponse{
 			ID:         r.ID,
+			MessageID:  r.MessageID,
 			Text:       r.Text,
 			Label:      r.Verdict.Label,
 			Confidence: r.Verdict.Confidence,
@@ -231,6 +235,7 @@ func (h *BotHandler) GetHistory(c *gin.Context) {
 	for _, r := range records {
 		resp = append(resp, checkResponse{
 			ID:         r.ID,
+			MessageID:  r.MessageID,
 			Text:       r.Text,
 			Label:      r.Verdict.Label,
 			Confidence: r.Verdict.Confidence,
@@ -268,6 +273,7 @@ func (h *BotHandler) GetHistoryRecord(c *gin.Context) {
 
 	c.JSON(http.StatusOK, checkResponse{
 		ID:         record.ID,
+		MessageID:  record.MessageID,
 		Text:       record.Text,
 		Label:      record.Verdict.Label,
 		Confidence: record.Verdict.Confidence,

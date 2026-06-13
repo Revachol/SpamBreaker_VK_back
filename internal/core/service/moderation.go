@@ -33,7 +33,7 @@ func NewModerationUseCase(
 
 // CheckText — основной юзкейс: валидирует текст, отправляет в ML, сохраняет результат.
 // applicationID опционален: передаётся ботом, чтобы привязать запись к приложению.
-func (uc *ModerationUseCase) CheckText(ctx context.Context, text, applicationID string) (*domain.CheckRecord, error) {
+func (uc *ModerationUseCase) CheckText(ctx context.Context, text, applicationID, messageID string) (*domain.CheckRecord, error) {
 	text = strings.TrimSpace(text)
 	if text == "" {
 		return nil, fmt.Errorf("text must not be empty")
@@ -49,6 +49,7 @@ func (uc *ModerationUseCase) CheckText(ctx context.Context, text, applicationID 
 
 	record := &domain.CheckRecord{
 		ID:            uuid.NewString(),
+		MessageID:     strings.TrimSpace(messageID),
 		Text:          text,
 		Verdict:       *verdict,
 		ApplicationID: applicationID,

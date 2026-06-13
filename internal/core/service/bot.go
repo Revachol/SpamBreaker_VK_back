@@ -156,15 +156,6 @@ func (uc *BotUseCase) ChangeBotStatus(ctx context.Context, applicationID string,
 	if active {
 		status = "active"
 	}
-	return uc.setBotStatus(ctx, applicationID, status)
-}
-
-// DeactivateBot деактивирует бота после удаления из чата.
-func (uc *BotUseCase) DeactivateBot(ctx context.Context, applicationID string) error {
-	return uc.setBotStatus(ctx, applicationID, "inactive")
-}
-
-func (uc *BotUseCase) setBotStatus(ctx context.Context, applicationID, status string) error {
 	app, err := uc.applicationRepo.GetByID(ctx, applicationID)
 	if err != nil {
 		return err
@@ -172,7 +163,24 @@ func (uc *BotUseCase) setBotStatus(ctx context.Context, applicationID, status st
 	if app == nil {
 		return nil
 	}
+	if app.Status == "inactive" {
+		return nil
+	}
 	app.Status = status
+	app.UpdatedAt = time.Now().UTC()
+	return uc.applicationRepo.Update(ctx, app)
+}
+
+// DeactivateBot деактивирует бота после удаления из чата.
+func (uc *BotUseCase) DeactivateBot(ctx context.Context, applicationID string) error {
+	app, err := uc.applicationRepo.GetByID(ctx, applicationID)
+	if err != nil {
+		return err
+	}
+	if app == nil {
+		return nil
+	}
+	app.Status = "inactive"
 	app.UpdatedAt = time.Now().UTC()
 	return uc.applicationRepo.Update(ctx, app)
 }

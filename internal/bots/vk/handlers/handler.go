@@ -89,7 +89,7 @@ func (b *VKBot) handleMessage(msg *object.MessagesMessage) error {
 	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 	defer cancel()
 
-	result, err := b.client.CheckMessage(ctx, text, peerIDStr)
+	result, err := b.client.CheckMessage(ctx, text, peerIDStr, strconv.Itoa(msg.ConversationMessageID))
 	if err != nil {
 		if !isGroup {
 			b.sendMessage(msg.PeerID, utils.FormatError(err), msg.ConversationMessageID)

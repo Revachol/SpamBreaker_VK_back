@@ -45,13 +45,15 @@ type VerifyRequest struct {
 
 // CheckRequest — запрос к Core API.
 type CheckRequest struct {
-	Text   string `json:"text"`
-	ChatID string `json:"chat_id,omitempty"`
+	Text      string `json:"text"`
+	ChatID    string `json:"chat_id,omitempty"`
+	MessageID string `json:"message_id,omitempty"`
 }
 
 // CheckResponse — ответ от Core API.
 type CheckResponse struct {
 	ID         string             `json:"id"`
+	MessageID  string             `json:"message_id,omitempty"`
 	Text       string             `json:"text"`
 	Label      string             `json:"label"`
 	Confidence float64            `json:"confidence"`
@@ -217,10 +219,11 @@ func (c *APIClient) VerifyUser(ctx context.Context, token string, userID int64) 
 
 // Check отправляет текст на проверку и возвращает вердикт.
 // chatID передаётся, чтобы бэкенд мог привязать запись к конкретному приложению.
-func (c *APIClient) CheckMessage(ctx context.Context, text string, chatID string) (*CheckResponse, error) {
+func (c *APIClient) CheckMessage(ctx context.Context, text, chatID, messageID string) (*CheckResponse, error) {
 	body, err := json.Marshal(CheckRequest{
-		Text:   text,
-		ChatID: chatID,
+		Text:      text,
+		ChatID:    chatID,
+		MessageID: messageID,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("api client: marshal: %w", err)

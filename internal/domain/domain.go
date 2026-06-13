@@ -17,6 +17,7 @@ type Verdict struct {
 // CheckRecord — запись в истории проверок.
 type CheckRecord struct {
 	ID            string    `json:"id"`
+	MessageID     string    `json:"message_id,omitempty"`
 	Text          string    `json:"text"`
 	Verdict       Verdict   `json:"verdict"`
 	ApplicationID string    `json:"application_id,omitempty"` // пусто для ручных проверок

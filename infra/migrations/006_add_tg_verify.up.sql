@@ -8,6 +8,9 @@ ALTER TABLE moderator
 ALTER TABLE application
     ALTER COLUMN status SET DEFAULT 'inactive';
 
+ALTER TABLE message
+    ADD COLUMN message_id VARCHAR(128);
+
 CREATE TABLE moderator_account
 (
     id                 UUID        PRIMARY KEY DEFAULT gen_random_uuid(),

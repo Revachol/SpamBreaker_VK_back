@@ -6,6 +6,9 @@ DROP INDEX IF EXISTS idx_moderator_account_moderator;
 ALTER TABLE application
     DROP COLUMN IF EXISTS own_acc_id;
 
+ALTER TABLE message
+    DROP COLUMN IF EXISTS message_id;
+
 DROP TABLE IF EXISTS moderator_account;
 
 ALTER TABLE application
