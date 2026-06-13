@@ -82,7 +82,7 @@ func NewRouter(
 			bots.GET("/history", bh.GetBotHistory)
 			bots.GET("/settings", bmh.GetSettings)
 			bots.POST("/settings", bmh.UpdateSettings)
-			bots.POST("/disable", bmh.DisableBot)
+			bots.POST("/active", bmh.ActiveBot)
 		}
 	}
 

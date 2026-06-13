@@ -150,8 +150,21 @@ func (uc *BotUseCase) UpdateSettings(ctx context.Context, settings *domain.Appli
 	return uc.applicationSettingsRepo.Update(ctx, settings)
 }
 
-// DisableBot деактивирует бота.
-func (uc *BotUseCase) DisableBot(ctx context.Context, applicationID string) error {
+// ChangeBotStatus меняет активность бота.
+func (uc *BotUseCase) ChangeBotStatus(ctx context.Context, applicationID string, active bool) error {
+	status := "suspended"
+	if active {
+		status = "active"
+	}
+	return uc.setBotStatus(ctx, applicationID, status)
+}
+
+// DeactivateBot деактивирует бота после удаления из чата.
+func (uc *BotUseCase) DeactivateBot(ctx context.Context, applicationID string) error {
+	return uc.setBotStatus(ctx, applicationID, "inactive")
+}
+
+func (uc *BotUseCase) setBotStatus(ctx context.Context, applicationID, status string) error {
 	app, err := uc.applicationRepo.GetByID(ctx, applicationID)
 	if err != nil {
 		return err
@@ -159,7 +172,7 @@ func (uc *BotUseCase) DisableBot(ctx context.Context, applicationID string) erro
 	if app == nil {
 		return nil
 	}
-	app.Status = "inactive"
+	app.Status = status
 	app.UpdatedAt = time.Now().UTC()
 	return uc.applicationRepo.Update(ctx, app)
 }

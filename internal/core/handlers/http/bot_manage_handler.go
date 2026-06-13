@@ -2,6 +2,7 @@ package httphandler
 
 import (
 	"net/http"
+	"strconv"
 	"time"
 
 	"github.com/Revachol/SpamBreaker_VK_back/internal/core/service"
@@ -40,7 +41,6 @@ type botUCSettingsResponse struct {
 type botUCSettingsRequest struct {
 	Sensitivity *int      `json:"sensitivity,omitempty"`
 	BannedWords *[]string `json:"banned_words,omitempty"`
-	Enabled     *bool     `json:"enabled,omitempty"`
 }
 
 type botInfoResponse struct {
@@ -227,9 +227,6 @@ func (h *BotManageHandler) UpdateSettings(c *gin.Context) {
 	if req.BannedWords != nil {
 		settings.BannedWords = *req.BannedWords
 	}
-	if req.Enabled != nil {
-		settings.AutoModerate = *req.Enabled
-	}
 	settings.UpdatedAt = time.Now().UTC()
 
 	if err := h.botUC.UpdateSettings(c.Request.Context(), settings); err != nil {
@@ -245,41 +242,49 @@ func (h *BotManageHandler) UpdateSettings(c *gin.Context) {
 	})
 }
 
-// DisableBot godoc
+// ActiveBot godoc
 //
-//	@Summary      Отключить Telegram бота
-//	@Description  Деактивирует активного Telegram бота пользователя
+//	@Summary      Изменить активность Telegram бота
+//	@Description  Устанавливает статус бота по boolean-флагу: true=active, false=suspended
 //	@Tags         telegram-bot
 //	@Produce      json
 //	@Param        appID path string true "ID приложения"
+//	@Param        status query bool true "Активность бота: true=active, false=suspended"
 //	@Success      200 {object} map[string]bool
+//	@Failure      400 {object} errorResponse
 //	@Failure      404 {object} errorResponse
 //	@Failure      500 {object} errorResponse
-//	@Router       /api/v1/bot/{appID}/disable [post]
+//	@Router       /api/v1/bot/{appID}/active [post]
 //	@Security     Bearer
-func (h *BotManageHandler) DisableBot(c *gin.Context) {
+func (h *BotManageHandler) ActiveBot(c *gin.Context) {
 	userID, exists := c.Get("user_id")
 	if !exists {
-		h.logger.Warnf("DisableBot: missing user_id in context")
+		h.logger.Warnf("ActiveBot: missing user_id in context")
 		c.JSON(http.StatusUnauthorized, errorResponse{Error: "user not authenticated"})
 		return
 	}
 	appID := c.Param("app_id")
 	if appID == "" {
-		h.logger.Warnf("DisableBot: missing app_id path param")
+		h.logger.Warnf("ActiveBot: missing app_id path param")
 		c.JSON(http.StatusBadRequest, errorResponse{Error: "app_id is required"})
 		return
 	}
+	status, err := strconv.ParseBool(c.Query("status"))
+	if err != nil {
+		h.logger.Warnf("ActiveBot: invalid status query param: %v", err)
+		c.JSON(http.StatusBadRequest, errorResponse{Error: "status must be boolean"})
+		return
+	}
 
-	err := h.moderator.CheckUserOwnApp(c.Request.Context(), userID.(string), appID)
+	err = h.moderator.CheckUserOwnApp(c.Request.Context(), userID.(string), appID)
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{})
 		return
 	}
 
-	if err := h.botUC.DisableBot(c.Request.Context(), appID); err != nil {
-		h.logger.Errorf("Error disabling bot: %s", err)
-		c.JSON(http.StatusInternalServerError, errorResponse{Error: "failed to disable bot"})
+	if err := h.botUC.ChangeBotStatus(c.Request.Context(), appID, status); err != nil {
+		h.logger.Errorf("ActiveBot: change bot status: %s", err)
+		c.JSON(http.StatusInternalServerError, errorResponse{Error: "failed to change bot status"})
 		return
 	}
 

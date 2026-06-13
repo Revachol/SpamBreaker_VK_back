@@ -6,7 +6,6 @@ import (
 	"time"
 
 	"github.com/Revachol/SpamBreaker_VK_back/internal/core/service"
-	"github.com/Revachol/SpamBreaker_VK_back/internal/domain"
 	"github.com/Revachol/SpamBreaker_VK_back/pkg/logger"
 	"github.com/gin-gonic/gin"
 )
@@ -37,6 +36,13 @@ type initiateVerificationResponse struct {
 	Token       string `json:"token"`
 	ExpiresAt   string `json:"expires_at"`
 	Instruction string `json:"instruction"`
+}
+
+type adminInfoResponse struct {
+	ID        string    `json:"id"`
+	Username  string    `json:"username"`
+	Role      string    `json:"role"`
+	CreatedAt time.Time `json:"created_at"`
 }
 
 type addAdminRequest struct {
@@ -75,10 +81,8 @@ type userBotResponse struct {
 //	@Summary      Инициировать верификацию аккаунта
 //	@Description  Создаёт одноразовый токен для подтверждения платформенного аккаунта
 //	@Tags         moderator-verification
-//	@Accept       json
 //	@Produce      json
 //	@Param        service path string true "Платформа аккаунта (telegram, vk)"
-//	@Param        body body initiateVerificationRequest true "ID аккаунта"
 //	@Success      200 {object} initiateVerificationResponse
 //	@Failure      400 {object} errorResponse
 //	@Failure      409 {object} errorResponse
@@ -305,9 +309,9 @@ func (h *ModeratorHandler) GetAdmins(c *gin.Context) {
 		return
 	}
 
-	resp := make([]domain.ApplicationAdminInfo, 0, len(admins))
+	resp := make([]adminInfoResponse, 0, len(admins))
 	for _, admin := range admins {
-		resp = append(resp, domain.ApplicationAdminInfo{
+		resp = append(resp, adminInfoResponse{
 			ID:        admin.ID,
 			Username:  admin.Username,
 			Role:      admin.Role,
@@ -369,7 +373,24 @@ func (h *ModeratorHandler) AddAdmin(c *gin.Context) {
 		}
 		return
 	}
-	c.JSON(http.StatusOK, gin.H{})
+
+	admins, err := h.moderatorService.GetAdmins(c.Request.Context(), appID)
+	if err != nil {
+		h.logger.Errorf("Error getting admins after add: %s", err)
+		c.JSON(http.StatusInternalServerError, errorResponse{Error: "failed to get admins"})
+		return
+	}
+
+	resp := make([]adminInfoResponse, 0, len(admins))
+	for _, admin := range admins {
+		resp = append(resp, adminInfoResponse{
+			ID:        admin.ID,
+			Username:  admin.Username,
+			Role:      admin.Role,
+			CreatedAt: admin.CreatedAt,
+		})
+	}
+	c.JSON(http.StatusOK, resp)
 }
 
 // RemoveAdmin godoc

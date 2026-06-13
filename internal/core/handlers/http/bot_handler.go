@@ -109,20 +109,24 @@ func (h *BotHandler) Check(c *gin.Context) {
 		return
 	}
 
-	applicationID := ""
-	if req.ChatID != "" {
-		app, err := h.botUC.GetByChatID(c.Request.Context(), platform, req.ChatID)
-		if err != nil {
-			h.logger.Errorf("Check: GetByChatID(%q) error: %v", req.ChatID, err)
-		} else if app != nil {
-			applicationID = app.ID
-			h.logger.Infof("Check: chat_id=%q -> application_id=%s", req.ChatID, applicationID)
-		} else {
-			h.logger.Warnf("Check: chat_id=%q -> no matching application found", req.ChatID)
-		}
+	if req.ChatID == "" {
+		h.logger.Warnf("Check: missing chat ID from request")
+	}
+	app, err := h.botUC.GetByChatID(c.Request.Context(), platform, req.ChatID)
+	if err != nil {
+		h.logger.Errorf("Check: GetByChatID(%q) error: %v", req.ChatID, err)
+		c.JSON(http.StatusInternalServerError, errorResponse{Error: err.Error()})
+		return
+	}
+	if app == nil {
+		c.JSON(http.StatusBadRequest, errorResponse{Error: err.Error()})
+		h.logger.Warnf("Check: chat_id=%q -> no matching application found", req.ChatID)
+	}
+	if app.Status != "active" {
+		c.JSON(http.Ok, errorResponse{Error: "application is not active"})
 	}
 
-	record, err := h.moderation.CheckText(c.Request.Context(), req.Text, applicationID)
+	record, err := h.moderation.CheckText(c.Request.Context(), req.Text, app.ID)
 	if err != nil {
 		status := http.StatusBadRequest
 		if isUpstreamError(err) {
@@ -494,7 +498,7 @@ func (h *BotHandler) DeactivateBot(c *gin.Context) {
 		c.JSON(http.StatusNotFound, errorResponse{Error: "telegram bot not found for chat"})
 		return
 	}
-	if err := h.botUC.DisableBot(c.Request.Context(), app.ID); err != nil {
+	if err := h.botUC.DeactivateBot(c.Request.Context(), app.ID); err != nil {
 		h.logger.Errorf("DeactivateBot telegram error: %v", err)
 		c.JSON(http.StatusInternalServerError, errorResponse{Error: "failed to deactivate bot"})
 		return

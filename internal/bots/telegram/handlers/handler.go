@@ -38,6 +38,7 @@ func (b *Bot) Run(coll botmetrics.BotMetricsIface) {
 
 	for update := range updates {
 		// Обработка my_chat_member (бот добавлен, получил права администратора или удалён из чата)
+		b.logger.Tracef("Update: %v", update)
 		if update.MyChatMember != nil {
 			b.handleChatMemberChanged(update.MyChatMember)
 			continue
