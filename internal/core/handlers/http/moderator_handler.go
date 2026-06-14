@@ -60,7 +60,7 @@ type moderatorAccountInfoResponse struct {
 	ID             string     `json:"id"`
 	ModeratorID    string     `json:"moderator_id"`
 	Platform       string     `json:"platform"`
-	AccountID      *string    `json:"account_id"`
+	AccountID      string     `json:"account_id"`
 	TokenExpiresAt *time.Time `json:"token_expires_at"`
 	VerifiedAt     *time.Time `json:"verified_at"`
 }
@@ -225,7 +225,7 @@ func (h *ModeratorHandler) GetModeratorAccountInfo(c *gin.Context) {
 		ID:             account.ID,
 		ModeratorID:    account.ModeratorID,
 		Platform:       account.Platform,
-		AccountID:      account.AccountID,
+		AccountID:      *account.AccountID,
 		TokenExpiresAt: account.TokenExpiresAt,
 		VerifiedAt:     account.VerifiedAt,
 	})
@@ -335,7 +335,6 @@ func (h *ModeratorHandler) GetAdmins(c *gin.Context) {
 //	@Success      200 {array} adminInfoResponse
 //	@Failure      400 {object} errorResponse
 //	@Failure      403 {object} errorResponse
-//	@Failure      404 {object} errorResponse
 //	@Failure      500 {object} errorResponse
 //	@Router       /api/v1/bot/{appID}/admin [post]
 //	@Security     Bearer
@@ -366,7 +365,7 @@ func (h *ModeratorHandler) AddAdmin(c *gin.Context) {
 		case "forbidden":
 			c.JSON(http.StatusForbidden, errorResponse{Error: "only the bot owner can manage admins"})
 		case "user not found":
-			c.JSON(http.StatusNotFound, errorResponse{Error: "user not found"})
+			c.JSON(http.StatusBadRequest, errorResponse{Error: "user not found"})
 		case "cannot add yourself as admin":
 			c.JSON(http.StatusBadRequest, errorResponse{Error: "cannot add yourself as admin"})
 		default:
@@ -408,7 +407,7 @@ func (h *ModeratorHandler) AddAdmin(c *gin.Context) {
 //	@Failure      403 {object} errorResponse
 //	@Failure      404 {object} errorResponse
 //	@Failure      500 {object} errorResponse
-//	@Router       /api/v1/bot/{appID}/admin/{username} [delete]
+//	@Router       /api/v1/bot/{appID}/admin/{mod_id} [delete]
 //	@Security     Bearer
 func (h *ModeratorHandler) RemoveAdmin(c *gin.Context) {
 	userID, exists := c.Get("user_id")
@@ -417,10 +416,10 @@ func (h *ModeratorHandler) RemoveAdmin(c *gin.Context) {
 		c.JSON(http.StatusUnauthorized, errorResponse{Error: "user not authenticated"})
 		return
 	}
-	targetUsername := c.Param("username")
+	modID := c.Param("mod_id")
 	appID := c.Param("app_id")
-	if targetUsername == "" {
-		h.logger.Warnf("RemoveAdmin: missing username path param")
+	if modID == "" {
+		h.logger.Warnf("RemoveAdmin: missing moderator id path param")
 		c.JSON(http.StatusBadRequest, errorResponse{Error: "username is required"})
 		return
 	}
@@ -430,7 +429,7 @@ func (h *ModeratorHandler) RemoveAdmin(c *gin.Context) {
 		return
 	}
 
-	if err := h.moderatorService.RemoveAdmin(c.Request.Context(), userID.(string), appID, targetUsername); err != nil {
+	if err := h.moderatorService.RemoveAdmin(c.Request.Context(), userID.(string), appID, modID); err != nil {
 		switch err.Error() {
 		case "forbidden":
 			c.JSON(http.StatusForbidden, errorResponse{Error: "only the bot owner can manage admins"})

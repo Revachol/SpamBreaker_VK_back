@@ -18,7 +18,7 @@ type ModeratorService struct {
 	moderatorRepo        interfaces.ModeratorRepository
 	moderatorAccountRepo interfaces.ModeratorAccountRepository
 	applicationRepo      interfaces.ApplicationRepository // для управления соадминами
-	log                  logger.Log
+	logger               logger.Log
 }
 
 func NewModeratorService(
@@ -31,7 +31,7 @@ func NewModeratorService(
 		moderatorRepo:        moderatorRepo,
 		moderatorAccountRepo: moderatorAccountRepo,
 		applicationRepo:      applicationRepo,
-		log:                  l,
+		logger:               l,
 	}
 }
 
@@ -208,7 +208,7 @@ func (s *ModeratorService) AddAdmin(ctx context.Context, ownerID, appID, targetU
 }
 
 // RemoveAdmin удаляет соадмина. Только владелец может удалять.
-func (s *ModeratorService) RemoveAdmin(ctx context.Context, ownerID, appID, targetUsername string) error {
+func (s *ModeratorService) RemoveAdmin(ctx context.Context, ownerID, appID, modID string) error {
 	app, err := s.applicationRepo.GetByID(ctx, appID)
 	if err != nil {
 		return err
@@ -217,15 +217,7 @@ func (s *ModeratorService) RemoveAdmin(ctx context.Context, ownerID, appID, targ
 		return fmt.Errorf("forbidden")
 	}
 
-	target, err := s.moderatorRepo.GetByUsername(ctx, targetUsername)
-	if err != nil {
-		return err
-	}
-	if target == nil {
-		return fmt.Errorf("user not found")
-	}
-
-	return s.applicationRepo.RemoveAdmin(ctx, appID, target.ID)
+	return s.applicationRepo.RemoveAdmin(ctx, appID, modID)
 }
 
 // GetAdmins возвращает список соадминов приложения.
