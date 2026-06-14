@@ -71,6 +71,7 @@ type userBotResponse struct {
 	ExternalID string    `json:"external_id"`
 	OwnerID    string    `json:"owner_id"`
 	OwnAccID   string    `json:"own_acc_id"`
+	Status     string    `json:"status"`
 	CreatedAt  time.Time `json:"created_at"`
 }
 
@@ -276,6 +277,7 @@ func (h *ModeratorHandler) GetUserBots(c *gin.Context) {
 			ExternalID: bot.ExternalID,
 			OwnerID:    bot.OwnerID,
 			OwnAccID:   bot.OwnAccID,
+			Status:     bot.Status,
 			CreatedAt:  bot.CreatedAt,
 		})
 	}
@@ -401,7 +403,7 @@ func (h *ModeratorHandler) AddAdmin(c *gin.Context) {
 //	@Produce      json
 //	@Param        appID path string true "ID приложения"
 //	@Param        username path string true "Username администратора"
-//	@Success      200 {array} nil
+//	@Success      200 {object} map[string]interface{}
 //	@Failure      400 {object} errorResponse
 //	@Failure      403 {object} errorResponse
 //	@Failure      404 {object} errorResponse

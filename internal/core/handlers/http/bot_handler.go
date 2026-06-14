@@ -37,7 +37,7 @@ func NewBotHandler(
 
 type checkRequest struct {
 	Text      string `json:"text" binding:"required"`
-	ChatID    string `json:"chat_id,omitempty"`
+	ChatID    string `json:"chat_id" binding:"required"`
 	MessageID string `json:"message_id,omitempty"`
 }
 
@@ -86,14 +86,16 @@ type verifyChatResponse struct {
 // Check godoc
 //
 //	@Summary     Проверить текст
-//	@Description Отправляет текст в ML-сервис и возвращает метку тональности
+//	@Description Проверяет текст сообщения активного бота и сохраняет результат проверки
 //	@Tags        moderation
 //	@Accept      json
 //	@Produce     json
 //	@Param       service path string true "Платформа бота (telegram, vk)"
-//	@Param       body body     checkRequest  true "Текст для проверки"
+//	@Param       body body checkRequest true "Текст, ID чата и внешний ID сообщения"
 //	@Success     200  {object} checkResponse
+//	@Success     204  "Приложение найдено, но не активно"
 //	@Failure     400  {object} errorResponse
+//	@Failure     500  {object} errorResponse
 //	@Failure     502  {object} errorResponse
 //	@Router      /api/bot/v1/{service}/check [post]
 func (h *BotHandler) Check(c *gin.Context) {
@@ -121,11 +123,13 @@ func (h *BotHandler) Check(c *gin.Context) {
 		return
 	}
 	if app == nil {
-		c.JSON(http.StatusBadRequest, errorResponse{Error: err.Error()})
 		h.logger.Warnf("Check: chat_id=%q -> no matching application found", req.ChatID)
+		c.JSON(http.StatusBadRequest, errorResponse{Error: "application not found"})
+		return
 	}
 	if app.Status != "active" {
 		c.JSON(http.StatusNoContent, gin.H{})
+		return
 	}
 
 	record, err := h.moderation.CheckText(c.Request.Context(), req.Text, app.ID, req.MessageID)
@@ -338,8 +342,8 @@ func (h *BotHandler) VerifyUserToken(c *gin.Context) {
 //	@Accept       json
 //	@Produce      json
 //	@Param        service path string true "Платформа бота (telegram, vk)"
-//	@Param        body body object{chat_id=int,user_id=int} true "chat_id и user_id добавившего"
-//	@Success      200 {object} map[string]bool
+//	@Param        body body AddChatRequest true "Данные подключаемого чата"
+//	@Success      200 {object} AddChatResponse
 //	@Failure      400 {object} errorResponse
 //	@Failure      403 {object} errorResponse
 //	@Failure      500 {object} errorResponse
