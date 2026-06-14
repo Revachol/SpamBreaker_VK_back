@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"net/http"
 	"strconv"
+	"strings"
 	"time"
 )
 
@@ -59,6 +60,10 @@ type CheckResponse struct {
 	Confidence float64            `json:"confidence"`
 	AllScores  map[string]float64 `json:"all_scores"`
 	CreatedAt  string             `json:"created_at"`
+}
+
+type coreErrorResponse struct {
+	Error string `json:"error"`
 }
 
 // APIClient — HTTP-клиент к Core API.
@@ -246,6 +251,16 @@ func (c *APIClient) CheckMessage(ctx context.Context, text, chatID, messageID st
 	}
 	defer resp.Body.Close()
 
+	if resp.StatusCode == http.StatusBadRequest {
+		var result coreErrorResponse
+		if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+			return nil, fmt.Errorf("api client: decode: %w", err)
+		}
+		if strings.EqualFold(strings.TrimSpace(result.Error), "application is not active") {
+			return nil, nil
+		}
+		return nil, fmt.Errorf("api client: bad request: %s", result.Error)
+	}
 	if resp.StatusCode != http.StatusOK {
 		return nil, fmt.Errorf("api client: unexpected status %d", resp.StatusCode)
 	}

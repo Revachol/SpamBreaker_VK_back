@@ -93,7 +93,6 @@ type verifyChatResponse struct {
 //	@Param       service path string true "Платформа бота (telegram, vk)"
 //	@Param       body body checkRequest true "Текст, ID чата и внешний ID сообщения"
 //	@Success     200  {object} checkResponse
-//	@Success     204  "Приложение найдено, но не активно"
 //	@Failure     400  {object} errorResponse
 //	@Failure     500  {object} errorResponse
 //	@Failure     502  {object} errorResponse
@@ -128,7 +127,7 @@ func (h *BotHandler) Check(c *gin.Context) {
 		return
 	}
 	if app.Status != "active" {
-		c.JSON(http.StatusNoContent, gin.H{})
+		c.JSON(http.StatusBadRequest, &errorResponse{Error: "application is not active"})
 		return
 	}
 

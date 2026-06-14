@@ -90,6 +90,9 @@ func (b *Bot) handleMessage(msg *tgbotapi.Message) {
 			b.logger.Errorf("chat=%d text=%q check error: %v", chatID, text, err)
 			return
 		}
+		if result == nil {
+			return
+		}
 
 		b.logger.Infof("chat=%d label=%s confidence=%.2f", chatID, result.Label, result.Confidence)
 
@@ -138,7 +141,7 @@ func (b *Bot) handleChatMemberChanged(update *tgbotapi.ChatMemberUpdated) {
 	switch {
 	case isBotJoinedChat(oldStatus, newStatus):
 		b.handleChatAdded(update)
-	case isBotPromoted(oldStatus, newStatus):
+	case isBotPromoted(oldStatus, newStatus) && update.NewChatMember.IsAdministrator():
 		b.handleChatPromoted(update)
 	case isBotRemoved(newStatus):
 		b.handleChatRemoved(update)
@@ -214,13 +217,14 @@ func (b *Bot) handleChatAdded(update *tgbotapi.ChatMemberUpdated) {
 		return
 	}
 
-	// Успех – приветственное сообщение
 	welcome := tgbotapi.NewMessage(chatID,
-		"✅ Бот SpamBreaker успешно активирован!")
+		"⚠️ Для работы SpamBreaker нужны права администратора.\n"+
+			"Пожалуйста, выдайте мне права администратора в настройках группы, чтобы я мог модерировать сообщения.")
 	b.api.Send(welcome) //nolint:errcheck
 
 	if update.NewChatMember.Status == "administrator" {
 		b.handleChatPromoted(update)
+		return
 	}
 }
 

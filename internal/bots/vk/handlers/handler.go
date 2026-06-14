@@ -97,6 +97,9 @@ func (b *VKBot) handleMessage(msg *object.MessagesMessage) error {
 		b.logger.Errorf("VK Check error: %v", err)
 		return expectation.ClientRequestError
 	}
+	if result == nil {
+		return nil
+	}
 	b.logger.Debugf("VK Check result: %v", result)
 
 	if isGroup {
