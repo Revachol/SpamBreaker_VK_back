@@ -2,4 +2,9 @@
 .idea/
 .vscode/
 build/
+docs/
+
 *.env
+
+promt.md
+model.pt

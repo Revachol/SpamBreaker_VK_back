@@ -13,25 +13,22 @@ Pooling: MEAN по attention-маске (КАК ПРИ ОБУЧЕНИИ — кр
   - label = "negative" если степень >= TOX_THRESHOLD, иначе "neutral"
   - all_scores.negative = степень, neutral = 1 - степень, positive = 0.0
 
-Inappropriateness убрана.
-
-Эндпоинты:
-  POST /classify        — одно сообщение
-  POST /classify_batch  — список сообщений
-  GET  /health
-  GET  /metrics
+Два эндпоинта:
+  POST /classify       — одно сообщение
+  POST /classify_batch — список сообщений
 """
 
 import torch
 import torch.nn as nn
-from fastapi import FastAPI, HTTPException, Response, Request
+import torch.nn.functional as F
+from fastapi import FastAPI, HTTPException, Request, Response
 from pydantic import BaseModel as PydanticBase
 from transformers import BertTokenizer, BertModel
 # from spam_filter import SpamFilter
 from prometheus_client import Counter, Histogram, generate_latest, CONTENT_TYPE_LATEST
 import time
 
-# ── Схемы (НЕ менялись — обратная совместимость) ────────────────────
+# ── Схема запроса / ответа ──────────────────────────────────────────
 
 class ClassifyRequest(PydanticBase):
     text: str
@@ -54,7 +51,7 @@ class BatchResponse(PydanticBase):
     results: list[BatchMessageResult]
 
 
-# ── Константы ───────────────────────────────────────────────────────
+# ── Константы ────────────────────────────────────────────────────────
 
 BASE_MODEL = "DeepPavlov/rubert-base-cased-conversational"
 MAX_LEN = 256                  # КАК ПРИ ОБУЧЕНИИ (было 128 — изменено)
@@ -64,6 +61,7 @@ HIDDEN_DIM = 768
 MLP_DIM = 128
 DROPOUT = 0.3                  # значение из обучения (в eval не влияет)
 DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+SERVICE_NAME = "model_service"
 
 
 # ── Метрики Prometheus ───────────────────────────────────────────────
@@ -185,7 +183,26 @@ def _classify_text(text: str) -> dict:
     }
 
 
-# ── Эндпоинты ───────────────────────────────────────────────────────
+# ── Эндпоинты ────────────────────────────────────────────────────────
+
+
+@app.middleware("http")
+async def metrics_middleware(request: Request, call_next):
+    start = time.time()
+    response = await call_next(request)
+    duration = time.time() - start
+
+    endpoint = request.url.path
+    method = request.method
+    status = response.status_code
+
+    if endpoint == "/health" or endpoint == "/metrics":
+        return response
+    requests_total.labels(method=method, path=endpoint, status=status, service=SERVICE_NAME).inc()
+    request_duration.labels(method=method, path=endpoint, status=status, service=SERVICE_NAME).observe(duration)
+
+    return response
+
 
 @app.post("/classify", response_model=ClassifyResponse)
 def classify(req: ClassifyRequest):

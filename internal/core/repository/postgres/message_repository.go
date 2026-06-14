@@ -6,11 +6,14 @@ import (
 	"errors"
 	"time"
 
+	"github.com/Revachol/SpamBreaker_VK_back/internal/core/repository/interfaces"
 	"github.com/Revachol/SpamBreaker_VK_back/internal/domain"
 	"github.com/Revachol/SpamBreaker_VK_back/pkg/logger"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
+
+var _ interfaces.MessageRepository = (*MessageRepository)(nil)
 
 // MessageRepository реализует интерфейс MessageRepository для PostgreSQL.
 type MessageRepository struct {
@@ -28,8 +31,8 @@ func NewMessageRepository(db *pgxpool.Pool, l logger.Log) *MessageRepository {
 // Verdict.Label сохраняется в поле status, Verdict.Confidence — в toxicity_score (умноженная на 100).
 func (r *MessageRepository) Save(ctx context.Context, record *domain.CheckRecord) error {
 	query := `
-        INSERT INTO message (id, text, status, toxicity_score, application_id, created_at)
-        VALUES (COALESCE($1, gen_random_uuid()), $2, $3, $4, $5, $6)
+        INSERT INTO message (id, message_id, text, status, toxicity_score, application_id, created_at)
+        VALUES (COALESCE($1, gen_random_uuid()), NULLIF($2, ''), $3, $4, $5, $6, $7)
         RETURNING id
     `
 
@@ -55,7 +58,7 @@ func (r *MessageRepository) Save(ctx context.Context, record *domain.CheckRecord
 
 	var generatedID uuid.UUID
 	err := r.db.QueryRow(ctx, query,
-		idParam, record.Text, record.Verdict.Label, toxicityScore, appID, record.CreatedAt,
+		idParam, record.MessageID, record.Text, record.Verdict.Label, toxicityScore, appID, record.CreatedAt,
 	).Scan(&generatedID)
 	if err != nil {
 		r.logger.Errorf("Message repo: save failed: %s", err)
@@ -69,7 +72,7 @@ func (r *MessageRepository) Save(ctx context.Context, record *domain.CheckRecord
 // ListByApplication возвращает историю проверок для конкретного приложения.
 func (r *MessageRepository) ListByApplication(ctx context.Context, applicationID string, limit, offset int) ([]*domain.CheckRecord, error) {
 	query := `
-        SELECT id, text, status, toxicity_score, created_at
+        SELECT id, COALESCE(message_id, ''), text, status, toxicity_score, created_at
         FROM message
         WHERE application_id = $1
         ORDER BY created_at DESC
@@ -91,17 +94,19 @@ func (r *MessageRepository) ListByApplication(ctx context.Context, applicationID
 	var records []*domain.CheckRecord
 	for rows.Next() {
 		var id uuid.UUID
+		var messageID string
 		var text, status string
 		var toxicityScore int
 		var createdAt time.Time
 
-		if err := rows.Scan(&id, &text, &status, &toxicityScore, &createdAt); err != nil {
+		if err := rows.Scan(&id, &messageID, &text, &status, &toxicityScore, &createdAt); err != nil {
 			r.logger.Errorf("Message repo: scan failed: %s", err)
 			return nil, err
 		}
 
 		records = append(records, &domain.CheckRecord{
 			ID:            id.String(),
+			MessageID:     messageID,
 			Text:          text,
 			ApplicationID: applicationID,
 			Verdict: domain.Verdict{
@@ -123,7 +128,7 @@ func (r *MessageRepository) ListByApplication(ctx context.Context, applicationID
 // Сортировка по created_at DESC (новые сверху).
 func (r *MessageRepository) List(ctx context.Context, limit, offset int) ([]*domain.CheckRecord, error) {
 	query := `
-        SELECT id, text, status, toxicity_score, created_at
+        SELECT id, COALESCE(message_id, ''), text, status, toxicity_score, created_at
         FROM message
         ORDER BY created_at DESC
         LIMIT $1 OFFSET $2
@@ -139,12 +144,13 @@ func (r *MessageRepository) List(ctx context.Context, limit, offset int) ([]*dom
 	var records []*domain.CheckRecord
 	for rows.Next() {
 		var id uuid.UUID
+		var messageID string
 		var text string
 		var status string
 		var toxicityScore int
 		var createdAt time.Time
 
-		if err := rows.Scan(&id, &text, &status, &toxicityScore, &createdAt); err != nil {
+		if err := rows.Scan(&id, &messageID, &text, &status, &toxicityScore, &createdAt); err != nil {
 			r.logger.Errorf("Message repo: scan list failed: %s", err)
 			return nil, err
 		}
@@ -152,8 +158,9 @@ func (r *MessageRepository) List(ctx context.Context, limit, offset int) ([]*dom
 		confidence := float64(toxicityScore) / 100.0
 
 		records = append(records, &domain.CheckRecord{
-			ID:   id.String(),
-			Text: text,
+			ID:        id.String(),
+			MessageID: messageID,
+			Text:      text,
 			Verdict: domain.Verdict{
 				Label:      status,
 				Confidence: confidence,
@@ -175,18 +182,19 @@ func (r *MessageRepository) List(ctx context.Context, limit, offset int) ([]*dom
 // Если запись не найдена, возвращает (nil, nil).
 func (r *MessageRepository) GetByID(ctx context.Context, id string) (*domain.CheckRecord, error) {
 	query := `
-        SELECT id, text, status, toxicity_score, created_at
+        SELECT id, COALESCE(message_id, ''), text, status, toxicity_score, created_at
         FROM message
         WHERE id = $1
     `
 
 	var uid uuid.UUID
+	var messageID string
 	var text string
 	var status string
 	var toxicityScore int
 	var createdAt time.Time
 
-	err := r.db.QueryRow(ctx, query, id).Scan(&uid, &text, &status, &toxicityScore, &createdAt)
+	err := r.db.QueryRow(ctx, query, id).Scan(&uid, &messageID, &text, &status, &toxicityScore, &createdAt)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return nil, nil
@@ -198,8 +206,9 @@ func (r *MessageRepository) GetByID(ctx context.Context, id string) (*domain.Che
 	confidence := float64(toxicityScore) / 100.0
 
 	return &domain.CheckRecord{
-		ID:   uid.String(),
-		Text: text,
+		ID:        uid.String(),
+		MessageID: messageID,
+		Text:      text,
 		Verdict: domain.Verdict{
 			Label:      status,
 			Confidence: confidence,

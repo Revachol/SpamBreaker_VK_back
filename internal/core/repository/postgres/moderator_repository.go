@@ -5,12 +5,15 @@ import (
 	"errors"
 	"time"
 
+	"github.com/Revachol/SpamBreaker_VK_back/internal/core/repository/interfaces"
 	"github.com/Revachol/SpamBreaker_VK_back/internal/domain"
 	"github.com/Revachol/SpamBreaker_VK_back/pkg/logger"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
+
+var _ interfaces.ModeratorRepository = (*ModeratorRepository)(nil)
 
 // ModeratorRepository реализует интерфейс ModeratorRepository для PostgreSQL.
 type ModeratorRepository struct {
@@ -25,8 +28,8 @@ func NewModeratorRepository(db *pgxpool.Pool, l logger.Log) *ModeratorRepository
 // Create сохраняет нового модератора.
 func (r *ModeratorRepository) Create(ctx context.Context, mod *domain.Moderator) error {
 	query := `
-		INSERT INTO moderator (id, username, email, password_hash, role, is_active, created_at, updated_at)
-		VALUES (COALESCE($1, gen_random_uuid()), $2, NULLIF($3, ''), $4, $5, $6, $7, $8)
+		INSERT INTO moderator (id, username, email, password_hash, is_active, created_at, updated_at)
+		VALUES (COALESCE($1, gen_random_uuid()), $2, NULLIF($3, ''), $4, $5, $6, $7)
 		RETURNING id, created_at, updated_at
 	`
 
@@ -48,7 +51,6 @@ func (r *ModeratorRepository) Create(ctx context.Context, mod *domain.Moderator)
 		mod.Username,
 		mod.Email,
 		mod.PasswordHash,
-		mod.Role,
 		mod.IsActive,
 		now,
 		now,
@@ -65,7 +67,7 @@ func (r *ModeratorRepository) Create(ctx context.Context, mod *domain.Moderator)
 // GetByUsername ищет модератора по имени. Возвращает (nil, nil) если не найден.
 func (r *ModeratorRepository) GetByUsername(ctx context.Context, username string) (*domain.Moderator, error) {
 	query := `
-		SELECT id, username, COALESCE(email, ''), password_hash, role, is_active, created_at, updated_at
+		SELECT id, username, COALESCE(email, ''), password_hash, is_active, created_at, updated_at
 		FROM moderator
 		WHERE username = $1
 	`
@@ -78,7 +80,6 @@ func (r *ModeratorRepository) GetByUsername(ctx context.Context, username string
 		&mod.Username,
 		&mod.Email,
 		&mod.PasswordHash,
-		&mod.Role,
 		&mod.IsActive,
 		&mod.CreatedAt,
 		&mod.UpdatedAt,
@@ -98,7 +99,7 @@ func (r *ModeratorRepository) GetByUsername(ctx context.Context, username string
 // GetByID ищет модератора по UUID. Возвращает (nil, nil) если не найден.
 func (r *ModeratorRepository) GetByID(ctx context.Context, id string) (*domain.Moderator, error) {
 	query := `
-		SELECT id, username, COALESCE(email, ''), password_hash, role, is_active, created_at, updated_at
+		SELECT id, username, COALESCE(email, ''), password_hash, is_active, created_at, updated_at
 		FROM moderator
 		WHERE id = $1
 	`
@@ -111,7 +112,6 @@ func (r *ModeratorRepository) GetByID(ctx context.Context, id string) (*domain.M
 		&mod.Username,
 		&mod.Email,
 		&mod.PasswordHash,
-		&mod.Role,
 		&mod.IsActive,
 		&mod.CreatedAt,
 		&mod.UpdatedAt,

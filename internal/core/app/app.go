@@ -12,8 +12,6 @@ import (
 	jwtpkg "github.com/Revachol/SpamBreaker_VK_back/pkg/jwt"
 	"github.com/Revachol/SpamBreaker_VK_back/pkg/logger"
 	"github.com/Revachol/SpamBreaker_VK_back/pkg/postgres"
-	"github.com/SevereCloud/vksdk/v2/api"
-	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
 	"github.com/prometheus/client_golang/prometheus"
 )
 
@@ -52,44 +50,29 @@ func Run() {
 	// 3. Репозитории.
 	messageRepo := repository.NewMessageRepository(pgx, app.logger)
 	moderatorRepo := repository.NewModeratorRepository(pgx, app.logger)
+	modAccRepo := repository.NewModeratorAccountRepo(pgx, &app.logger)
 	applicationRepo := repository.NewApplicationRepository(pgx, app.logger)
 	applicationSettingsRepo := repository.NewApplicationSettingsRepository(pgx, app.logger)
-
-	// 4. Telegram API клиент.
-	var telegramAPI *tgbotapi.BotAPI
-	if cfg.Telegram.Token != "" {
-		var err error
-		telegramAPI, err = tgbotapi.NewBotAPI(cfg.Telegram.Token)
-		if err != nil {
-			app.logger.Warnf("failed to connect to Telegram: %v", err)
-		} else {
-			app.logger.Infof("authorized as @%s", telegramAPI.Self.UserName)
-		}
-	}
-	if cfg.Vk.Token == "" {
-		app.logger.Fatal("VK token not configured")
-	}
-	vk := api.NewVK(cfg.Vk.Token)
 
 	// 5. JWT-менеджер.
 	jwtManager := jwtpkg.NewManager(cfg.JWT.Secret, cfg.JWT.TTL)
 
 	// 6. Бизнес-логика.
+	modAccService := service.NewModeratorService(moderatorRepo, modAccRepo, applicationRepo, app.logger)
 	moderationUC := service.NewModerationUseCase(mlClient, messageRepo, app.logger)
 	authUC := service.NewAuthUseCase(moderatorRepo, jwtManager, app.logger)
-	telegramBotUC := service.NewTelegramBotUseCase(applicationRepo, applicationSettingsRepo, moderatorRepo, telegramAPI, app.logger)
-	vkBotUC := service.NewVkBotUseCase(applicationRepo, applicationSettingsRepo, moderatorRepo, vk, app.logger)
+	botUC := service.NewBotUseCase(applicationRepo, applicationSettingsRepo, modAccRepo, app.logger)
 
 	// 6. Transport layer.
-	handler := httphandler.NewHandler(moderationUC, telegramBotUC, app.logger)
+	handler := httphandler.NewBotHandler(moderationUC, botUC, modAccService, app.logger)
 	authHandler := httphandler.NewAuthHandler(authUC, app.logger)
-	telegramBotHandler := httphandler.NewTelegramBotHandler(telegramBotUC, moderationUC, app.logger)
-	vkBotHandler := httphandler.NewVkBotHandler(vkBotUC, app.logger)
+	moderHandler := httphandler.NewModeratorHandler(modAccService, botUC, app.logger)
+	botHandler := httphandler.NewBotManageHandler(botUC, modAccService, app.logger)
 	router := httphandler.NewRouter(
 		handler,
 		authHandler,
-		telegramBotHandler,
-		vkBotHandler,
+		moderHandler,
+		botHandler,
 		jwtManager,
 		app.registry,
 		app.config,

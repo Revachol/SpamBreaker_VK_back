@@ -3,14 +3,19 @@ package repository
 import (
 	"context"
 	"errors"
+	"fmt"
+	"strings"
 	"time"
 
+	"github.com/Revachol/SpamBreaker_VK_back/internal/core/repository/interfaces"
 	"github.com/Revachol/SpamBreaker_VK_back/internal/domain"
 	"github.com/Revachol/SpamBreaker_VK_back/pkg/logger"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
+
+var _ interfaces.ApplicationRepository = (*ApplicationRepository)(nil)
 
 // ApplicationRepository реализует интерфейс ApplicationRepository для PostgreSQL.
 type ApplicationRepository struct {
@@ -30,8 +35,8 @@ func (r *ApplicationRepository) Create(ctx context.Context, app *domain.Applicat
 	}
 
 	query := `
-		INSERT INTO application (id, name, platform, external_id, token, owner_id, status, verified_at, created_at, updated_at)
-		VALUES (COALESCE($1, gen_random_uuid()), $2, $3, $4, $5, $6, $7, $8, $9, $10)
+		INSERT INTO application (id, name, platform, external_id, token, owner_id, own_acc_id, status, verified_at, created_at, updated_at)
+		VALUES (COALESCE($1, gen_random_uuid()), $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
 		RETURNING id, created_at, updated_at
 	`
 
@@ -47,6 +52,15 @@ func (r *ApplicationRepository) Create(ctx context.Context, app *domain.Applicat
 
 	now := time.Now().UTC()
 	var generatedID uuid.UUID
+	var ownAccID interface{} = nil
+	if app.OwnAccID != "" {
+		parsed, err := uuid.Parse(app.OwnAccID)
+		if err != nil {
+			r.logger.Errorf("Error parsing owner account id %s: %s", app.OwnAccID, err)
+			return err
+		}
+		ownAccID = parsed
+	}
 
 	err := r.db.QueryRow(ctx, query,
 		idParam,
@@ -55,6 +69,7 @@ func (r *ApplicationRepository) Create(ctx context.Context, app *domain.Applicat
 		app.ExternalID,
 		app.Token,
 		app.OwnerID,
+		ownAccID,
 		app.Status,
 		app.VerifiedAt,
 		now,
@@ -72,7 +87,7 @@ func (r *ApplicationRepository) Create(ctx context.Context, app *domain.Applicat
 // GetByID ищет приложение по UUID. Возвращает (nil, nil) если не найден.
 func (r *ApplicationRepository) GetByID(ctx context.Context, id string) (*domain.Application, error) {
 	query := `
-		SELECT id, name, platform, external_id, token, owner_id, status, verified_at, created_at, updated_at
+		SELECT id, name, platform, external_id, token, owner_id, own_acc_id, status, verified_at, created_at, updated_at
 		FROM application
 		WHERE id = $1
 	`
@@ -80,6 +95,7 @@ func (r *ApplicationRepository) GetByID(ctx context.Context, id string) (*domain
 	var app domain.Application
 	var appID uuid.UUID
 	var ownerID uuid.NullUUID
+	var ownAccID uuid.NullUUID
 
 	err := r.db.QueryRow(ctx, query, id).Scan(
 		&appID,
@@ -88,6 +104,7 @@ func (r *ApplicationRepository) GetByID(ctx context.Context, id string) (*domain
 		&app.ExternalID,
 		&app.Token,
 		&ownerID,
+		&ownAccID,
 		&app.Status,
 		&app.VerifiedAt,
 		&app.CreatedAt,
@@ -105,6 +122,9 @@ func (r *ApplicationRepository) GetByID(ctx context.Context, id string) (*domain
 	if ownerID.Valid {
 		app.OwnerID = ownerID.UUID.String()
 	}
+	if ownAccID.Valid {
+		app.OwnAccID = ownAccID.UUID.String()
+	}
 
 	return &app, nil
 }
@@ -112,7 +132,7 @@ func (r *ApplicationRepository) GetByID(ctx context.Context, id string) (*domain
 // GetByToken ищет приложение по токену. Возвращает (nil, nil) если не найден.
 func (r *ApplicationRepository) GetByToken(ctx context.Context, token string) (*domain.Application, error) {
 	query := `
-		SELECT id, name, platform, external_id, token, owner_id, status, verified_at, created_at, updated_at
+		SELECT id, name, platform, external_id, token, owner_id, own_acc_id, status, verified_at, created_at, updated_at
 		FROM application
 		WHERE token = $1
 	`
@@ -120,6 +140,7 @@ func (r *ApplicationRepository) GetByToken(ctx context.Context, token string) (*
 	var app domain.Application
 	var appID uuid.UUID
 	var ownerID uuid.NullUUID
+	var ownAccID uuid.NullUUID
 
 	err := r.db.QueryRow(ctx, query, token).Scan(
 		&appID,
@@ -128,6 +149,7 @@ func (r *ApplicationRepository) GetByToken(ctx context.Context, token string) (*
 		&app.ExternalID,
 		&app.Token,
 		&ownerID,
+		&ownAccID,
 		&app.Status,
 		&app.VerifiedAt,
 		&app.CreatedAt,
@@ -145,14 +167,17 @@ func (r *ApplicationRepository) GetByToken(ctx context.Context, token string) (*
 	if ownerID.Valid {
 		app.OwnerID = ownerID.UUID.String()
 	}
+	if ownAccID.Valid {
+		app.OwnAccID = ownAccID.UUID.String()
+	}
 
 	return &app, nil
 }
 
 // GetByExternalIDAndPlatform ищет приложение по внешнему ID и платформе. Возвращает (nil, nil) если не найден.
-func (r *ApplicationRepository) GetByExternalIDAndPlatform(ctx context.Context, externalID string, platform string) (*domain.Application, error) {
+func (r *ApplicationRepository) GetByExternalIDAndPlatform(ctx context.Context, platform string, externalID string) (*domain.Application, error) {
 	query := `
-		SELECT id, name, platform, external_id, token, owner_id, status, verified_at, created_at, updated_at
+		SELECT id, name, platform, external_id, token, owner_id, own_acc_id, status, verified_at, created_at, updated_at
 		FROM application
 		WHERE external_id = $1 AND platform = $2
 	`
@@ -160,6 +185,7 @@ func (r *ApplicationRepository) GetByExternalIDAndPlatform(ctx context.Context, 
 	var app domain.Application
 	var appID uuid.UUID
 	var ownerID uuid.NullUUID
+	var ownAccID uuid.NullUUID
 
 	err := r.db.QueryRow(ctx, query, externalID, platform).Scan(
 		&appID,
@@ -168,6 +194,7 @@ func (r *ApplicationRepository) GetByExternalIDAndPlatform(ctx context.Context, 
 		&app.ExternalID,
 		&app.Token,
 		&ownerID,
+		&ownAccID,
 		&app.Status,
 		&app.VerifiedAt,
 		&app.CreatedAt,
@@ -185,6 +212,9 @@ func (r *ApplicationRepository) GetByExternalIDAndPlatform(ctx context.Context, 
 	if ownerID.Valid {
 		app.OwnerID = ownerID.UUID.String()
 	}
+	if ownAccID.Valid {
+		app.OwnAccID = ownAccID.UUID.String()
+	}
 
 	return &app, nil
 }
@@ -193,7 +223,7 @@ func (r *ApplicationRepository) GetByExternalIDAndPlatform(ctx context.Context, 
 func (r *ApplicationRepository) Update(ctx context.Context, app *domain.Application) error {
 	query := `
 		UPDATE application
-		SET name = $2, platform = $3, external_id = $4, token = $5, owner_id = $6, status = $7, verified_at = $8, updated_at = $9
+		SET name = $2, platform = $3, external_id = $4, token = $5, owner_id = $6, own_acc_id = $7, status = $8, verified_at = $9, updated_at = $10
 		WHERE id = $1
 		RETURNING updated_at
 	`
@@ -208,6 +238,15 @@ func (r *ApplicationRepository) Update(ctx context.Context, app *domain.Applicat
 		}
 		ownerID = parsed
 	}
+	var ownAccID interface{} = nil
+	if app.OwnAccID != "" {
+		parsed, err := uuid.Parse(app.OwnAccID)
+		if err != nil {
+			r.logger.Errorf("Error parsing owner account id %s: %s", app.OwnAccID, err)
+			return err
+		}
+		ownAccID = parsed
+	}
 
 	err := r.db.QueryRow(ctx, query,
 		app.ID,
@@ -216,6 +255,7 @@ func (r *ApplicationRepository) Update(ctx context.Context, app *domain.Applicat
 		app.ExternalID,
 		app.Token,
 		ownerID,
+		ownAccID,
 		app.Status,
 		app.VerifiedAt,
 		now,
@@ -242,13 +282,11 @@ func (r *ApplicationRepository) Delete(ctx context.Context, id string) error {
 }
 
 // ListByOwnerOrAdmin возвращает приложения, где пользователь — владелец или соадмин.
-func (r *ApplicationRepository) ListByOwnerOrAdmin(ctx context.Context, userID string) ([]*domain.Application, error) {
+func (r *ApplicationRepository) ListByOwnerOrAdmin(ctx context.Context, userID, platform, role string) ([]*domain.Application, error) {
 	query := `
-		SELECT DISTINCT a.id, a.name, a.platform, a.external_id, a.token, a.owner_id, a.status, a.verified_at, a.created_at, a.updated_at
+		SELECT DISTINCT a.id, a.name, a.platform, a.external_id, a.token, a.owner_id, a.own_acc_id, a.status, a.verified_at, a.created_at, a.updated_at
 		FROM application a
 		LEFT JOIN application_admins aa ON aa.application_id = a.id
-		WHERE a.owner_id = $1 OR aa.moderator_id = $1
-		ORDER BY a.created_at DESC
 	`
 
 	parsedUserID, err := uuid.Parse(userID)
@@ -257,7 +295,24 @@ func (r *ApplicationRepository) ListByOwnerOrAdmin(ctx context.Context, userID s
 		return nil, err
 	}
 
-	rows, err := r.db.Query(ctx, query, parsedUserID)
+	args := []interface{}{parsedUserID}
+	conditions := make([]string, 0, 2)
+
+	switch role {
+	case "owner":
+		conditions = append(conditions, "a.owner_id = $1")
+	case "admin":
+		conditions = append(conditions, "aa.moderator_id = $1 AND (a.owner_id IS NULL OR a.owner_id <> $1)")
+	default:
+		conditions = append(conditions, "(a.owner_id = $1 OR aa.moderator_id = $1)")
+	}
+	if platform != "" {
+		args = append(args, platform)
+		conditions = append(conditions, fmt.Sprintf("a.platform = $%d", len(args)))
+	}
+
+	query += " WHERE " + strings.Join(conditions, " AND ") + " ORDER BY a.created_at DESC"
+	rows, err := r.db.Query(ctx, query, args...)
 	if err != nil {
 		r.logger.Errorf("Error listing accessible applications for user %s: %s", userID, err)
 		return nil, err
@@ -269,6 +324,7 @@ func (r *ApplicationRepository) ListByOwnerOrAdmin(ctx context.Context, userID s
 		var app domain.Application
 		var appID uuid.UUID
 		var appOwnerID uuid.NullUUID
+		var appOwnAccID uuid.NullUUID
 
 		err := rows.Scan(
 			&appID,
@@ -277,6 +333,7 @@ func (r *ApplicationRepository) ListByOwnerOrAdmin(ctx context.Context, userID s
 			&app.ExternalID,
 			&app.Token,
 			&appOwnerID,
+			&appOwnAccID,
 			&app.Status,
 			&app.VerifiedAt,
 			&app.CreatedAt,
@@ -290,6 +347,9 @@ func (r *ApplicationRepository) ListByOwnerOrAdmin(ctx context.Context, userID s
 		app.ID = appID.String()
 		if appOwnerID.Valid {
 			app.OwnerID = appOwnerID.UUID.String()
+		}
+		if appOwnAccID.Valid {
+			app.OwnAccID = appOwnAccID.UUID.String()
 		}
 
 		apps = append(apps, &app)
@@ -347,9 +407,15 @@ func (r *ApplicationRepository) RemoveAdmin(ctx context.Context, appID, moderato
 	return err
 }
 
-// ListAdminIDs возвращает список ID модераторов-соадминов приложения.
-func (r *ApplicationRepository) ListAdminIDs(ctx context.Context, appID string) ([]string, error) {
-	query := `SELECT moderator_id FROM application_admins WHERE application_id = $1`
+// ListAdmins возвращает список соадминов приложения с ролью и датой добавления.
+func (r *ApplicationRepository) ListAdmins(ctx context.Context, appID string) ([]domain.ApplicationAdminInfo, error) {
+	query := `
+		SELECT m.id, m.username, aa.role, aa.created_at
+		FROM application_admins aa
+		JOIN moderator m ON m.id = aa.moderator_id
+		WHERE aa.application_id = $1
+		ORDER BY aa.created_at DESC
+	`
 
 	parsedAppID, err := uuid.Parse(appID)
 	if err != nil {
@@ -363,22 +429,24 @@ func (r *ApplicationRepository) ListAdminIDs(ctx context.Context, appID string) 
 	}
 	defer rows.Close()
 
-	var ids []string
+	var admins []domain.ApplicationAdminInfo
 	for rows.Next() {
+		var admin domain.ApplicationAdminInfo
 		var modID uuid.UUID
-		if err := rows.Scan(&modID); err != nil {
+		if err := rows.Scan(&modID, &admin.Username, &admin.Role, &admin.CreatedAt); err != nil {
 			return nil, err
 		}
-		ids = append(ids, modID.String())
+		admin.ID = modID.String()
+		admins = append(admins, admin)
 	}
 
-	return ids, rows.Err()
+	return admins, rows.Err()
 }
 
 // ListByOwner возвращает список приложений владельца.
 func (r *ApplicationRepository) ListByOwner(ctx context.Context, ownerID string) ([]*domain.Application, error) {
 	query := `
-		SELECT id, name, platform, external_id, token, owner_id, status, verified_at, created_at, updated_at
+		SELECT id, name, platform, external_id, token, owner_id, own_acc_id, status, verified_at, created_at, updated_at
 		FROM application
 		WHERE owner_id = $1
 		ORDER BY created_at DESC
@@ -402,6 +470,7 @@ func (r *ApplicationRepository) ListByOwner(ctx context.Context, ownerID string)
 		var app domain.Application
 		var appID uuid.UUID
 		var appOwnerID uuid.NullUUID
+		var appOwnAccID uuid.NullUUID
 
 		err := rows.Scan(
 			&appID,
@@ -410,6 +479,7 @@ func (r *ApplicationRepository) ListByOwner(ctx context.Context, ownerID string)
 			&app.ExternalID,
 			&app.Token,
 			&appOwnerID,
+			&appOwnAccID,
 			&app.Status,
 			&app.VerifiedAt,
 			&app.CreatedAt,
@@ -423,6 +493,9 @@ func (r *ApplicationRepository) ListByOwner(ctx context.Context, ownerID string)
 		app.ID = appID.String()
 		if appOwnerID.Valid {
 			app.OwnerID = appOwnerID.UUID.String()
+		}
+		if appOwnAccID.Valid {
+			app.OwnAccID = appOwnAccID.UUID.String()
 		}
 
 		apps = append(apps, &app)

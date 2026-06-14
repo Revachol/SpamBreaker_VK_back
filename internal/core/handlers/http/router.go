@@ -16,10 +16,10 @@ import (
 
 // NewRouter собирает gin.Engine с маршрутами и middleware.
 func NewRouter(
-	h *Handler,
+	bh *BotHandler,
 	ah *AuthHandler,
-	tbh *TelegramBotHandler,
-	vbh *VkBotHandler,
+	mh *ModeratorHandler,
+	bmh *BotManageHandler,
 	jwtManager *jwtpkg.Manager,
 	reg *prometheus.Registry,
 	cfg *config.Config,
@@ -47,59 +47,42 @@ func NewRouter(
 	}
 
 	// Публичные маршруты бота — вызываются Telegram-ботом без JWT.
-	bot := r.Group("/api/v1")
+	bot := r.Group("/api/bot/v1/:service")
 	{
-		bot.POST("/check", h.Check)
-		bot.POST("/bots/telegram/activate", tbh.ActivateBot)
-		bot.GET("/bots/telegram/internal/chat-active", tbh.IsChatActive)
-		bot.POST("/bots/vk/activate", vbh.ActivateBot)
-		bot.GET("/bots/vk/internal/chat-active", vbh.IsChatActive)
+		bot.POST("/check", bh.Check)                 // check message
+		bot.POST("/chat/active", bh.ActivateAddChat) // Add bot to chat
+		bot.PATCH("/chat/active", bh.ActivateChat)   // Activate bot in chat
+		bot.PATCH("/chat/name", bh.UpdateChatName)   // Update bot chat name
+		bot.DELETE("/chat/active", bh.DeactivateBot) // Del bot to chat
+		bot.POST("/active", bh.VerifyUserToken)      // Verify user
 	}
 
 	// Защищённые маршруты — требуют Bearer-токен.
 	v1 := r.Group("/api/v1")
 	v1.Use(JWTMiddleware(jwtManager))
 	{
-		v1.GET("/history", h.GetHistory)
-		v1.GET("/history/:id", h.GetRecord)
-		v1.GET("/bots/vk/history", h.GetBotHistory)
+		v1.GET("/history", bh.GetHistory)
+		v1.GET("/history/:id", bh.GetHistoryRecord)
 
-		// Telegram bot routes
-		telegram := v1.Group("/bots/telegram")
+		user := v1.Group("/user")
 		{
-			telegram.GET("", tbh.ListBots)
-			telegram.POST("", tbh.CreateBot)
-
-			bot := telegram.Group("/:botId")
-			{
-				bot.GET("", tbh.GetBot)
-				bot.PUT("", tbh.RenameBot)
-				bot.DELETE("", tbh.DeleteBot)
-				bot.GET("/token", tbh.GetBotToken)
-				bot.GET("/status", tbh.GetBotStatus)
-				bot.GET("/settings", tbh.GetSettings)
-				bot.POST("/settings", tbh.UpdateSettings)
-				bot.POST("/disable", tbh.DisableBot)
-				bot.POST("/verify-chat", tbh.VerifyChat)
-				bot.GET("/history", tbh.GetHistory)
-				bot.GET("/admins", tbh.GetAdmins)
-				bot.POST("/admins", tbh.AddAdmin)
-				bot.DELETE("/admins/:username", tbh.RemoveAdmin)
-			}
+			user.POST("/:service/verify", mh.InitiateVerification)
+			user.GET("/account", mh.GetModeratorAccounts)
+			user.GET("/account/:accID", mh.GetModeratorAccountInfo)
+			user.GET("/bot", mh.GetUserBots)
 		}
 
 		// Telegram bot routes
-		vk := v1.Group("/bots/vk")
+		bots := v1.Group("/bot/:app_id")
 		{
-			vk.GET("/token", vbh.GetToken)
-			vk.GET("/status", vbh.GetStatus)
-			vk.GET("/settings", vbh.GetSettings)
-			vk.POST("/settings", vbh.UpdateSettings)
-			vk.POST("/verify-chat", vbh.VerifyChat)
-			vk.POST("/disable", vbh.DisableBot)
-			vk.GET("/admins", vbh.GetAdmins)
-			vk.POST("/admins", vbh.AddAdmin)
-			vk.DELETE("/admins/:username", vbh.RemoveAdmin)
+			bots.GET("/", bmh.GetInfo)
+			bots.GET("/admin", mh.GetAdmins)
+			bots.POST("/admin", mh.AddAdmin)
+			bots.DELETE("/admin/:mod_id", mh.RemoveAdmin)
+			bots.GET("/history", bh.GetBotHistory)
+			bots.GET("/settings", bmh.GetSettings)
+			bots.POST("/settings", bmh.UpdateSettings)
+			bots.POST("/active", bmh.ActiveBot)
 		}
 	}
 
