@@ -12,12 +12,12 @@ import (
 )
 
 const (
-	activateAddBot  = "/api/bot/v1/telegram/chat/active"
-	activateBot     = "/api/bot/v1/telegram/chat/active"
-	removeBotHandle = "/api/bot/v1/telegram/chat/active"
-	renameChat      = "/api/bot/v1/telegram/chat/name"
-	verifyUser      = "/api/bot/v1/telegram/active"
-	checkMessage    = "/api/bot/v1/telegram/check"
+	activateAddBot  = "/chat/active"
+	activateBot     = "/chat/active"
+	removeBotHandle = "/chat/active"
+	renameChat      = "/chat/name"
+	verifyUser      = "/active"
+	checkMessage    = "/check"
 )
 
 // ActivateRequest — запрос к Core API.

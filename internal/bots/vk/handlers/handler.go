@@ -62,6 +62,10 @@ func (b *VKBot) handleMessage(msg *object.MessagesMessage) error {
 	text := strings.TrimSpace(msg.Text)
 	peerIDStr := strconv.Itoa(msg.PeerID)
 
+	if b.handleChatAction(msg) {
+		return nil
+	}
+
 	if text == "" {
 		return nil
 	}
@@ -71,29 +75,16 @@ func (b *VKBot) handleMessage(msg *object.MessagesMessage) error {
 		return b.handleCommand(msg)
 	}
 
-	// Проверка активации для групп
-	//if isGroup {
-	//	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-	//	active, err := b.client.IsChatActive(ctx, peerIDStr)
-	//	cancel()
-	//	if err != nil {
-	//		b.logger.Warnf("failed to check chat %s registration: %v", peerIDStr, err)
-	//		return nil
-	//	}
-	//	if !active {
-	//		return nil
-	//	}
-	//}
-
+	if !isGroup {
+		return nil
+	}
 	// Анализ текста через ML Core
 	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 	defer cancel()
 
 	result, err := b.client.CheckMessage(ctx, text, peerIDStr, strconv.Itoa(msg.ConversationMessageID))
 	if err != nil {
-		if !isGroup {
-			b.sendMessage(msg.PeerID, utils.FormatError(err), msg.ConversationMessageID)
-		}
+		b.sendMessage(msg.PeerID, utils.FormatError(err), msg.ConversationMessageID)
 		b.logger.Errorf("VK Check error: %v", err)
 		return expectation.ClientRequestError
 	}
@@ -102,28 +93,100 @@ func (b *VKBot) handleMessage(msg *object.MessagesMessage) error {
 	}
 	b.logger.Debugf("VK Check result: %v", result)
 
-	if isGroup {
-		if result.Label == "negative" && result.Confidence >= spamThreshold {
-			// Удаление сообщения в ВК
-			_, err := b.vk.MessagesDelete(api.Params{
-				"peer_id":        msg.PeerID,
-				"cmids":          msg.ConversationMessageID,
-				"delete_for_all": 1,
-				"group_id":       b.lp.GroupID,
-			})
-			if err != nil {
-				b.logger.Errorf("failed to delete msg: %v", err)
-			}
-
-			notice := fmt.Sprintf("🚫 Сообщение удалено: обнаружен спам (%.0f%%)", result.Confidence*100)
-			b.sendMessage(msg.PeerID, notice, 0)
+	if result.Label == "negative" && result.Confidence >= spamThreshold {
+		// Удаление сообщения в ВК
+		_, err := b.vk.MessagesDelete(api.Params{
+			"peer_id":        msg.PeerID,
+			"cmids":          msg.ConversationMessageID,
+			"delete_for_all": 1,
+			"group_id":       b.lp.GroupID,
+		})
+		if err != nil {
+			b.logger.Errorf("failed to delete msg: %v", err)
 		}
-		return nil
+
+		notice := fmt.Sprintf("🚫 Сообщение удалено: обнаружен спам (%.0f%%)", result.Confidence*100)
+		b.sendMessage(msg.PeerID, notice, 0)
 	}
 
-	// Ответ в личку
-	b.sendMessage(msg.PeerID, utils.FormatVerdict(result), msg.ConversationMessageID)
 	return nil
+}
+
+func (b *VKBot) handleChatAction(msg *object.MessagesMessage) bool {
+	b.logger.Tracef("VK ChatActionType: %v", msg.Action.Type)
+	switch msg.Action.Type {
+	case object.ChatTitleUpdate:
+		b.handleChatRenamed(msg)
+		return true
+	case object.ChatInviteUser, object.ChatInviteUserByLink:
+		if msg.Action.MemberID == b.botMemberID() {
+			b.handleChatAdded(msg)
+			b.handleChatPromoted(msg.PeerID)
+			return true
+		}
+	case object.ChatKickUser:
+		if msg.Action.MemberID == b.botMemberID() {
+			b.handleChatRemoved(msg)
+			return true
+		}
+	}
+
+	return false
+}
+
+func (b *VKBot) handleChatRenamed(msg *object.MessagesMessage) {
+	if msg.PeerID <= 2000000000 || msg.Action.Text == "" {
+		return
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	if err := b.client.UpdateChatName(ctx, int64(msg.PeerID), msg.Action.Text); err != nil {
+		b.logger.Warnf("UpdateChatName failed for chat=%d name=%q: %v", msg.PeerID, msg.Action.Text, err)
+	}
+}
+
+func (b *VKBot) handleChatAdded(msg *object.MessagesMessage) {
+	chatID := msg.PeerID
+	fromUserID := msg.FromID
+
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	if err := b.client.ActivateAddChat(ctx, vkChatName(msg), int64(fromUserID), int64(chatID)); err != nil {
+		b.logger.Warnf("ActivateAddChat failed for chat=%d, user=%d: %v", chatID, fromUserID, err)
+		return
+	}
+
+	b.sendMessage(chatID,
+		"⚠️ Для работы SpamBreaker нужны права администратора.\n"+
+			"Пожалуйста, выдайте мне права администратора в настройках беседы, чтобы я мог модерировать сообщения.",
+		0,
+	)
+}
+
+func (b *VKBot) handleChatPromoted(chatID int) {
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	if err := b.client.ActivateChat(ctx, int64(chatID)); err != nil {
+		b.logger.Warnf("ActivateChat failed for chat=%d: %v", chatID, err)
+		return
+	}
+
+	b.sendMessage(chatID, "✅ Права администратора получены. Модерация сообщений активирована.", 0)
+}
+
+func (b *VKBot) handleChatRemoved(msg *object.MessagesMessage) {
+	chatID := msg.PeerID
+
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	if err := b.client.DeactivateChat(ctx, int64(chatID)); err != nil {
+		b.logger.Warnf("DeactivateChat failed for chat=%d: %v", chatID, err)
+	}
 }
 
 func (b *VKBot) handleCommand(msg *object.MessagesMessage) error {
@@ -133,7 +196,16 @@ func (b *VKBot) handleCommand(msg *object.MessagesMessage) error {
 	var response string
 	switch cmd {
 	case "/start":
-		response = "👋 Привет! Я SpamBreaker для ВКонтакте.\nДобавьте меня в беседу для защиты от спама."
+		response = "👋 Привет! Я SpamBreaker для ВКонтакте.\n\n" +
+			"Команды:\n" +
+			"/connect TOKEN — подтвердить аккаунт\n" +
+			"/help — справка"
+	case "/help":
+		response = "ℹ️ Как подключить VK-бота:\n\n" +
+			"1. Подтвердите аккаунт в личном кабинете и получите код верификации.\n" +
+			"2. Отправьте этот код мне в личные сообщения командой /connect ВАШ_ТОКЕН.\n" +
+			"3. Добавьте меня в беседу.\n" +
+			"4. Выдайте мне права администратора, чтобы я мог модерировать сообщения."
 	case "/connect":
 		return b.handleConnect(msg, parts)
 	default:
@@ -164,29 +236,37 @@ func (b *VKBot) sendMessage(peerID int, text string, replyTo int) {
 
 // handleConnect обрабатывает команду /connect TOKEN.
 func (b *VKBot) handleConnect(msg *object.MessagesMessage, parts []string) error {
-	// 1. Проверяем наличие токена в аргументах
-	//if len(parts) < 2 {
-	//	b.sendMessage(msg.PeerID, "❌ Укажите токен: `/connect ВАШ_ТОКЕН`", msg.ConversationMessageID)
-	//	return nil
-	//}
-	//
-	//token := parts[1]
-	//chatID := strconv.Itoa(msg.PeerID)
-	//
-	//// 2. Создаем контекст для запроса к Core API
-	//ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-	//defer cancel()
+	if msg.PeerID > 2000000000 {
+		return nil
+	}
+	if len(parts) < 2 || strings.TrimSpace(parts[1]) == "" {
+		b.sendMessage(msg.PeerID, "❌ Укажите токен: /connect ВАШ_ТОКЕН", msg.ConversationMessageID)
+		return nil
+	}
 
-	//// 3. Вызываем активацию чата
-	//if err := b.client.ActivateChat(ctx, token, chatID); err != nil {
-	//	b.logger.Errorf("failed to activate chat %s with token: %v", chatID, err)
-	//	b.sendMessage(msg.PeerID, "❌ Не удалось подключить бота. Проверьте токен и попробуйте снова.", msg.ConversationMessageID)
-	//	return err
-	//}
-	//
-	//// 4. Отправляем успешный ответ
-	//successMsg := "✅ *Бот SpamBreaker успешно подключён!*\n\nМодерация сообщений активирована."
-	//b.sendMessage(msg.PeerID, successMsg, msg.ConversationMessageID)
+	token := strings.TrimSpace(parts[1])
+
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	if err := b.client.VerifyUser(ctx, token, int64(msg.FromID)); err != nil {
+		b.logger.Errorf("Verify account failed: user=%d token=%s err=%v", msg.FromID, token, err)
+		b.sendMessage(msg.PeerID, "❌ Не удалось активировать аккаунт. Убедитесь, что вы являетесь владельцем токена.", msg.ConversationMessageID)
+		return nil
+	}
+
+	b.sendMessage(msg.PeerID, "✅ Ваш аккаунт SpamBreaker успешно активирован!", msg.ConversationMessageID)
 
 	return nil
+}
+
+func (b *VKBot) botMemberID() int {
+	return -b.lp.GroupID
+}
+
+func vkChatName(msg *object.MessagesMessage) string {
+	if msg.Action.Text != "" {
+		return msg.Action.Text
+	}
+	return fmt.Sprintf("VK Chat %d", msg.PeerID)
 }

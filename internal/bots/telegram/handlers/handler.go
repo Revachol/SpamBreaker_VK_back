@@ -82,40 +82,42 @@ func (b *Bot) handleMessage(msg *tgbotapi.Message) {
 
 	// Групповой чат: проверяем регистрацию и анализируем текст
 	if msg.Chat.IsGroup() || msg.Chat.IsSuperGroup() {
-		ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
-		defer cancel()
+		return
+	}
 
-		result, err := b.client.CheckMessage(ctx, text, strconv.FormatInt(chatID, 10), strconv.Itoa(msg.MessageID))
-		if err != nil {
-			b.logger.Errorf("chat=%d text=%q check error: %v", chatID, text, err)
-			return
+	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+	defer cancel()
+
+	result, err := b.client.CheckMessage(ctx, text, strconv.FormatInt(chatID, 10), strconv.Itoa(msg.MessageID))
+	if err != nil {
+		b.logger.Errorf("chat=%d text=%q check error: %v", chatID, text, err)
+		return
+	}
+	if result == nil {
+		return
+	}
+
+	b.logger.Infof("chat=%d label=%s confidence=%.2f", chatID, result.Label, result.Confidence)
+
+	if result.Label == "negative" && result.Confidence >= spamThreshold {
+		// Удаляем сообщение
+		del := tgbotapi.NewDeleteMessage(chatID, msg.MessageID)
+		if _, err := b.api.Request(del); err != nil {
+			b.logger.Errorf("delete message chat=%d msg=%d: %v", chatID, msg.MessageID, err)
 		}
-		if result == nil {
-			return
-		}
-
-		b.logger.Infof("chat=%d label=%s confidence=%.2f", chatID, result.Label, result.Confidence)
-
-		if result.Label == "negative" && result.Confidence >= spamThreshold {
-			// Удаляем сообщение
-			del := tgbotapi.NewDeleteMessage(chatID, msg.MessageID)
-			if _, err := b.api.Request(del); err != nil {
-				b.logger.Errorf("delete message chat=%d msg=%d: %v", chatID, msg.MessageID, err)
+		sender := "пользователь"
+		if msg.From != nil {
+			if msg.From.UserName != "" {
+				sender = "@" + msg.From.UserName
+			} else {
+				sender = msg.From.FirstName
 			}
-			sender := "пользователь"
-			if msg.From != nil {
-				if msg.From.UserName != "" {
-					sender = "@" + msg.From.UserName
-				} else {
-					sender = msg.From.FirstName
-				}
-			}
-			notice := tgbotapi.NewMessage(chatID, fmt.Sprintf(
-				"🚫 Сообщение от %s удалено: обнаружен спам (%.0f%%)",
-				sender, result.Confidence*100,
-			))
-			b.api.Send(notice) //nolint:errcheck
 		}
+		notice := tgbotapi.NewMessage(chatID, fmt.Sprintf(
+			"🚫 Сообщение от %s удалено: обнаружен спам (%.0f%%)",
+			sender, result.Confidence*100,
+		))
+		b.api.Send(notice) //nolint:errcheck
 	}
 }
 

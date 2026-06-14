@@ -62,7 +62,7 @@ func Run() {
 	}
 	log.Infof("authorized as @%s", lp.Server)
 
-	coreAddr := fmt.Sprintf("http://%s:%s", cfg.Core.Host, cfg.Core.Port)
+	coreAddr := fmt.Sprintf("http://%s:%s/api/bot/v1/vk", cfg.Core.Host, cfg.Core.Port)
 	apiClient := check_client.NewAPIClient(coreAddr)
 
 	router := httphandler.NewRouter(app.registry)
