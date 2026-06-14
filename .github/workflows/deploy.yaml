@@ -94,7 +94,7 @@ jobs:
           ssh -o StrictHostKeyChecking=no -i ~/.ssh/deploy_key $SERVER_CONFIG \
             "docker load -i $APP_DIR/$MODE/all_images.tar" || echo "Image load error"
           ssh -o StrictHostKeyChecking=no -i ~/.ssh/deploy_key $SERVER_CONFIG \
-            "cd $APP_DIR/$MODE && docker compose up -d --force-recreate" || echo "Run error"
+            "cd $APP_DIR/$MODE && docker compose up -d --force-recreate $APPS" || echo "Run error"
           
           RESULT=$(ssh -o StrictHostKeyChecking=no -i ~/.ssh/deploy_key $SERVER_CONFIG \
             "cd $APP_DIR/$MODE && docker compose ps -q | wc -l")

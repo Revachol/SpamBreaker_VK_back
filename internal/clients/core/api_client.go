@@ -60,6 +60,7 @@ type CheckResponse struct {
 	Confidence float64            `json:"confidence"`
 	AllScores  map[string]float64 `json:"all_scores"`
 	CreatedAt  string             `json:"created_at"`
+	Threshold  float64            `json:"threshold,omitempty"`
 }
 
 type coreErrorResponse struct {

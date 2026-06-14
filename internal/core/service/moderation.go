@@ -76,6 +76,30 @@ func (uc *ModerationUseCase) GetHistory(ctx context.Context, limit, offset int) 
 	return uc.repo.List(ctx, limit, offset)
 }
 
+// CheckTextForcedNegative сохраняет запись с вердиктом "negative" без вызова ML.
+// Используется, когда текст содержит запрещённое слово.
+func (uc *ModerationUseCase) CheckTextForcedNegative(ctx context.Context, text, applicationID string) (*domain.CheckRecord, error) {
+	text = strings.TrimSpace(text)
+	if text == "" {
+		return nil, fmt.Errorf("text must not be empty")
+	}
+	record := &domain.CheckRecord{
+		ID:   uuid.NewString(),
+		Text: text,
+		Verdict: domain.Verdict{
+			Label:      "negative",
+			Confidence: 1.0,
+			AllScores:  map[string]float64{"negative": 1.0, "neutral": 0.0, "positive": 0.0},
+		},
+		ApplicationID: applicationID,
+		CreatedAt:     time.Now().UTC(),
+	}
+	if err := uc.repo.Save(ctx, record); err != nil {
+		uc.logger.Warnf("failed to save forced negative record: %v\n", err)
+	}
+	return record, nil
+}
+
 // GetHistoryByApp возвращает историю проверок для конкретного приложения.
 func (uc *ModerationUseCase) GetHistoryByApp(
 	ctx context.Context,

@@ -81,7 +81,7 @@ func (b *Bot) handleMessage(msg *tgbotapi.Message) {
 	}
 
 	// Групповой чат: проверяем регистрацию и анализируем текст
-	if msg.Chat.IsGroup() || msg.Chat.IsSuperGroup() {
+	if !(msg.Chat.IsGroup() || msg.Chat.IsSuperGroup()) {
 		return
 	}
 

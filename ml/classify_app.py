@@ -13,16 +13,14 @@ Pooling: MEAN по attention-маске (КАК ПРИ ОБУЧЕНИИ — кр
   - label = "negative" если степень >= TOX_THRESHOLD, иначе "neutral"
   - all_scores.negative = степень, neutral = 1 - степень, positive = 0.0
 
-Inappropriateness убрана.
-
-Эндпоинты:
-  POST /classify        — одно сообщение
-  POST /classify_batch  — список сообщений
-  GET  /health
+Два эндпоинта:
+  POST /classify       — одно сообщение
+  POST /classify_batch — список сообщений
 """
 
 import torch
 import torch.nn as nn
+import torch.nn.functional as F
 from fastapi import FastAPI, HTTPException, Request, Response
 from pydantic import BaseModel as PydanticBase
 from transformers import BertTokenizer, BertModel
@@ -67,6 +65,7 @@ SERVICE_NAME = "model_service"
 
 
 # ── Метрики Prometheus ───────────────────────────────────────────────
+
 
 # Создаём метрики (глобальные)
 requests_total = Counter(

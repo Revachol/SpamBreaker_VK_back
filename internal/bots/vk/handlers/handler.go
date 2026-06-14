@@ -113,7 +113,8 @@ func (b *VKBot) handleMessage(msg *object.MessagesMessage) error {
 }
 
 func (b *VKBot) handleChatAction(msg *object.MessagesMessage) bool {
-	b.logger.Tracef("VK ChatActionType: %v", msg.Action.Type)
+	b.logger.Tracef("VK ChatActionType: %v", msg.
+		Action.Type)
 	switch msg.Action.Type {
 	case object.ChatTitleUpdate:
 		b.handleChatRenamed(msg)

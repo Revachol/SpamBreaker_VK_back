@@ -1,1 +1,2 @@
-core_service tg_service vk_service
+tg_service core_service vk_service model_service
+
