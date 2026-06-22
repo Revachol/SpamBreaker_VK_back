@@ -28,7 +28,7 @@ func NewBufferRepository(
 	log logger.Log,
 ) *BufferRepository {
 	if limit <= 0 {
-		limit = 50
+		limit = 5
 	}
 
 	return &BufferRepository{
@@ -39,8 +39,8 @@ func NewBufferRepository(
 	}
 }
 
-func (r *BufferRepository) Add(ctx context.Context, record *domain.CheckRecord) error {
-	if record.ApplicationID == "" {
+func (r *BufferRepository) Add(ctx context.Context, appID string, record domain.BMessage) error {
+	if appID == "" {
 		return nil
 	}
 
@@ -49,7 +49,7 @@ func (r *BufferRepository) Add(ctx context.Context, record *domain.CheckRecord) 
 		return err
 	}
 
-	key := cacheKey(record.ApplicationID)
+	key := cacheKey(appID)
 	if err := r.redis.LPush(ctx, key, string(payload)).Err(); err != nil {
 		return err
 	}
@@ -59,29 +59,25 @@ func (r *BufferRepository) Add(ctx context.Context, record *domain.CheckRecord) 
 	return r.redis.Expire(ctx, key, r.ttl).Err()
 }
 
-func (r *BufferRepository) List(ctx context.Context, applicationID string, limit int) ([]*domain.CheckRecord, error) {
-	if limit <= 0 || limit > r.limit {
-		limit = r.limit
-	}
-
-	items, err := r.redis.LRange(ctx, cacheKey(applicationID), 0, int64(limit-1)).Result()
+func (r *BufferRepository) List(ctx context.Context, applicationID string) ([]domain.BMessage, error) {
+	items, err := r.redis.LRange(ctx, cacheKey(applicationID), 0, int64(r.limit-1)).Result()
 	if err != nil {
 		return nil, err
 	}
 
-	records := make([]*domain.CheckRecord, 0, len(items))
+	records := make([]domain.BMessage, 0, len(items))
 	for _, item := range items {
-		var record domain.CheckRecord
+		var record domain.BMessage
 		if err := json.Unmarshal([]byte(item), &record); err != nil {
 			return nil, err
 		}
-		records = append(records, &record)
+		records = append(records, record)
 	}
 
 	return records, nil
 }
 
-func (r *BufferRepository) Replace(ctx context.Context, applicationID string, records []*domain.CheckRecord) error {
+func (r *BufferRepository) Replace(ctx context.Context, applicationID string, records []domain.BMessage) error {
 	key := cacheKey(applicationID)
 	if err := r.redis.Del(ctx, key).Err(); err != nil {
 		return err
@@ -112,5 +108,5 @@ func (r *BufferRepository) Limit() int {
 }
 
 func cacheKey(applicationID string) string {
-	return fmt.Sprintf("core:chat_messages:%s", applicationID)
+	return fmt.Sprintf("core:app:%s", applicationID)
 }

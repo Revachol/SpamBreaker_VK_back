@@ -7,8 +7,8 @@ import (
 )
 
 type BufferRepository interface {
-	Add(ctx context.Context, record *domain.CheckRecord) error
-	List(ctx context.Context, applicationID string, limit int) ([]*domain.CheckRecord, error)
-	Replace(ctx context.Context, applicationID string, records []*domain.CheckRecord) error
+	Add(ctx context.Context, appID string, record domain.BMessage) error
+	List(ctx context.Context, applicationID string) ([]domain.BMessage, error)
+	Replace(ctx context.Context, applicationID string, records []domain.BMessage) error
 	Limit() int
 }
