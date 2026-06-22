@@ -30,10 +30,10 @@ app:
 
   redis:
     enabled: true
-    host: REDIS_HOST
-    port: REDIS_PORT
-    password: REDIS_PASSWORD
-    db: 0
+    host: RD_HOST
+    port: RD_PORT
+    password: RD_PSWD
+    db: RD_BASE
     list_limit: 50
     list_ttl: 24h
     dial_timeout: 2s

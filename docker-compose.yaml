@@ -25,9 +25,10 @@ services:
       PG_BASE: ${PG_BASE}
       PG_USER: ${PG_USER}
       PG_PSWD: ${PG_PSWD}
-      REDIS_HOST: redis
-      REDIS_PORT: 6379
-      REDIS_PASSWORD: ""
+      RD_HOST: ${RD_HOST}
+      RD_PORT: ${RD_PORT}
+      RD_BASE: ${RD_BASE}
+      RD_PSWD: ${RD_PSWD}
       ML_HOST: ${ML_HOST}
       ML_PORT: ${ML_PORT}
       JWT_SECRET: ${JWT_SECRET}

@@ -62,7 +62,7 @@ type RedisConfig struct {
 	Host         string        `yaml:"host"`
 	Port         string        `yaml:"port"`
 	Password     string        `yaml:"password"`
-	DB           int           `yaml:"db"`
+	DB           string        `yaml:"db"`
 	ListLimit    int           `yaml:"list_limit"`
 	ListTTL      time.Duration `yaml:"list_ttl"`
 	DialTimeout  time.Duration `yaml:"dial_timeout"`
@@ -128,7 +128,7 @@ func Load() (*Config, error) {
 		Enabled:      false,
 		Host:         "localhost",
 		Port:         "6379",
-		DB:           0,
+		DB:           "0",
 		ListLimit:    50,
 		ListTTL:      24 * time.Hour,
 		DialTimeout:  2 * time.Second,
@@ -159,6 +159,7 @@ func loadEnv(cfg *Config) {
 
 	cfg.Redis.Host = getEnv(cfg.Redis.Host, "localhost")
 	cfg.Redis.Port = getEnv(cfg.Redis.Port, "6379")
+	cfg.Redis.DB = getEnv(cfg.Redis.DB, "0")
 	cfg.Redis.Password = getEnv(cfg.Redis.Password, "")
 
 	cfg.ML.Host = getEnv(cfg.ML.Host, "localhost")

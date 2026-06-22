@@ -20,11 +20,15 @@ func NewConnect(ctx context.Context, cfg *config.RedisConfig) (*Client, error) {
 	if err != nil {
 		return nil, fmt.Errorf("failed to convert port to int: %w", err)
 	}
+	db, err := strconv.Atoi(cfg.DB)
+	if err != nil {
+		return nil, fmt.Errorf("failed to convert port to int: %w", err)
+	}
 
 	client := goredis.NewClient(&goredis.Options{
 		Addr:         fmt.Sprintf("%s:%d", cfg.Host, port),
 		Password:     cfg.Password,
-		DB:           cfg.DB,
+		DB:           db,
 		DialTimeout:  cfg.DialTimeout,
 		ReadTimeout:  cfg.ReadTimeout,
 		WriteTimeout: cfg.WriteTimeout,
