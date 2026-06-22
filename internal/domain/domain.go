@@ -2,6 +2,7 @@ package domain
 
 import (
 	"context"
+	"errors"
 	"time"
 )
 
@@ -65,5 +66,7 @@ type ApplicationSettings struct {
 // Classifier — абстракция над ML-микросервисом.
 // Реализация живёт в internal/client/ml.
 type Classifier interface {
-	Classify(ctx context.Context, text string) (*Verdict, error)
+	Classify(ctx context.Context, batch []BMessage) (*Verdict, error)
 }
+
+var ErrClassifierUpstream = errors.New("classifier upstream error")

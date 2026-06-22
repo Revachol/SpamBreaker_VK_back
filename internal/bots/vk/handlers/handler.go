@@ -82,7 +82,13 @@ func (b *VKBot) handleMessage(msg *object.MessagesMessage) error {
 	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 	defer cancel()
 
-	result, err := b.client.CheckMessage(ctx, text, peerIDStr, strconv.Itoa(msg.ConversationMessageID))
+	result, err := b.client.CheckMessage(
+		ctx,
+		text,
+		peerIDStr,
+		strconv.Itoa(msg.ConversationMessageID),
+		time.UnixMilli(int64(msg.Date)),
+	)
 	if err != nil {
 		b.sendMessage(msg.PeerID, utils.FormatError(err), msg.ConversationMessageID)
 		b.logger.Errorf("VK Check error: %v", err)

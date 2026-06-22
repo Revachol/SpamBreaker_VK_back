@@ -1,11 +1,14 @@
 package httphandler
 
 import (
+	"errors"
 	"net/http"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/Revachol/SpamBreaker_VK_back/internal/core/service"
+	"github.com/Revachol/SpamBreaker_VK_back/internal/domain"
 	"github.com/Revachol/SpamBreaker_VK_back/pkg/logger"
 	"github.com/gin-gonic/gin"
 )
@@ -36,9 +39,10 @@ func NewBotHandler(
 // ---------- DTOs ----------
 
 type checkRequest struct {
-	Text      string `json:"text" binding:"required"`
-	ChatID    string `json:"chat_id" binding:"required"`
-	MessageID string `json:"message_id,omitempty"`
+	Text      string    `json:"text" binding:"required"`
+	ChatID    string    `json:"chat_id" binding:"required"`
+	MessageID string    `json:"message_id,omitempty"`
+	SendAt    time.Time `json:"send_at"`
 }
 
 type checkResponse struct {
@@ -67,18 +71,6 @@ type updateChatNameRequest struct {
 type verifyUserTokenRequest struct {
 	Token  string `json:"token" binding:"required"`
 	UserID string `json:"user_id" binding:"required"`
-}
-
-type verifyChatRequest struct {
-	ChatID string `json:"chat_id" binding:"required"`
-}
-
-type verifyChatResponse struct {
-	Success   bool   `json:"success"`
-	Verified  bool   `json:"verified"`
-	Message   string `json:"message"`
-	Activated bool   `json:"activated"`
-	Token     string `json:"token"`
 }
 
 // ---------- Handlers ----------
@@ -131,7 +123,7 @@ func (h *BotHandler) Check(c *gin.Context) {
 		return
 	}
 
-	record, err := h.moderation.CheckText(c.Request.Context(), req.Text, app.ID, req.MessageID)
+	record, err := h.moderation.CheckText(c.Request.Context(), req.Text, app.ID, req.MessageID, req.SendAt)
 	if err != nil {
 		status := http.StatusBadRequest
 		if isUpstreamError(err) {
@@ -530,7 +522,7 @@ func queryInt(c *gin.Context, key string, defaultVal int, l logger.Log) int {
 }
 
 func isUpstreamError(err error) bool {
-	return err != nil && len(err.Error()) > 9 && err.Error()[:9] == "ml client"
+	return errors.Is(err, domain.ErrClassifierUpstream)
 }
 
 func normalizeBotService(service string) string {

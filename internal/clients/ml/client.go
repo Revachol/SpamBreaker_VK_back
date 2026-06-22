@@ -12,17 +12,7 @@ import (
 	"github.com/Revachol/SpamBreaker_VK_back/pkg/logger"
 )
 
-// mlRequest — тело запроса к ML-сервису.
-type mlRequest struct {
-	Text string `json:"text"`
-}
-
-// mlResponse — ответ от ML-сервиса.
-type mlResponse struct {
-	Label      string             `json:"label"`
-	Confidence float64            `json:"confidence"`
-	AllScores  map[string]float64 `json:"all_scores"`
-}
+var _ domain.Classifier = (*Client)(nil)
 
 // Client реализует domain.Classifier.
 type Client struct {
@@ -41,9 +31,37 @@ func NewClient(baseURL string, l logger.Log) *Client {
 	}
 }
 
+// mlRequest — тело запроса к ML-сервису.
+type mlRequest struct {
+	Text   string    `json:"text"`
+	SendAt time.Time `json:"send_at"`
+}
+
+type mlBatchRequest struct {
+	Messages []mlRequest
+}
+
+// mlResponse — ответ от ML-сервиса.
+type mlResponse struct {
+	Label      string             `json:"label"`
+	Confidence float64            `json:"confidence"`
+	AllScores  map[string]float64 `json:"all_scores"`
+}
+
 // Classify отправляет текст в ML-сервис и возвращает вердикт.
-func (c *Client) Classify(ctx context.Context, text string) (*domain.Verdict, error) {
-	body, err := json.Marshal(mlRequest{Text: text})
+func (c *Client) Classify(ctx context.Context, batch []domain.BMessage) (*domain.Verdict, error) {
+	request := mlBatchRequest{
+		Messages: make([]mlRequest, 0, len(batch)),
+	}
+
+	for _, msg := range batch {
+		request.Messages = append(request.Messages, mlRequest{
+			Text:   msg.Text,
+			SendAt: msg.SendAt,
+		})
+	}
+
+	body, err := json.Marshal(request)
 	if err != nil {
 		return nil, fmt.Errorf("ml client: marshal request: %w", err)
 	}
@@ -51,7 +69,7 @@ func (c *Client) Classify(ctx context.Context, text string) (*domain.Verdict, er
 	req, err := http.NewRequestWithContext(
 		ctx,
 		http.MethodPost,
-		c.baseURL+"/classify",
+		c.baseURL+"/classify/batch",
 		bytes.NewReader(body),
 	)
 	if err != nil {

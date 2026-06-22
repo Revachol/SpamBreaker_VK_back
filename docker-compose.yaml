@@ -10,6 +10,8 @@ services:
         condition: service_healthy
       postgres:
         condition: service_healthy
+      redis:
+        condition: service_healthy
     volumes:
       - ./configs/core_config.yaml:/app/config.yaml
       - ./infra/migrations:/app/migrations
@@ -23,6 +25,10 @@ services:
       PG_BASE: ${PG_BASE}
       PG_USER: ${PG_USER}
       PG_PSWD: ${PG_PSWD}
+      RD_HOST: ${RD_HOST}
+      RD_PORT: ${RD_PORT}
+      RD_BASE: ${RD_BASE}
+      RD_PSWD: ${RD_PSWD}
       ML_HOST: ${ML_HOST}
       ML_PORT: ${ML_PORT}
       JWT_SECRET: ${JWT_SECRET}
@@ -131,6 +137,18 @@ services:
       timeout: 5s
       retries: 5
       start_period: 10s
+
+  redis:
+    image: redis:8-alpine
+    container_name: redis_sb_${MODE}
+    networks:
+      - service-net
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 5s
 
   adminer:
     image: adminer:latest

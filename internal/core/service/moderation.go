@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"strings"
+	"sync"
 	"time"
 
 	repository "github.com/Revachol/SpamBreaker_VK_back/internal/core/repository/interfaces"
@@ -16,24 +17,31 @@ import (
 type ModerationUseCase struct {
 	classifier domain.Classifier
 	repo       repository.MessageRepository
+	buffer     repository.BufferRepository
 	logger     logger.Log
 }
 
 func NewModerationUseCase(
 	classifier domain.Classifier,
 	repo repository.MessageRepository,
+	buffer repository.BufferRepository,
 	logger logger.Log,
 ) *ModerationUseCase {
 	return &ModerationUseCase{
 		classifier: classifier,
 		repo:       repo,
+		buffer:     buffer,
 		logger:     logger,
 	}
 }
 
 // CheckText — основной юзкейс: валидирует текст, отправляет в ML, сохраняет результат.
 // applicationID опционален: передаётся ботом, чтобы привязать запись к приложению.
-func (uc *ModerationUseCase) CheckText(ctx context.Context, text, applicationID, messageID string) (*domain.CheckRecord, error) {
+func (uc *ModerationUseCase) CheckText(
+	ctx context.Context,
+	text, applicationID, messageID string,
+	sendAt time.Time,
+) (*domain.CheckRecord, error) {
 	text = strings.TrimSpace(text)
 	if text == "" {
 		return nil, fmt.Errorf("text must not be empty")
@@ -41,8 +49,14 @@ func (uc *ModerationUseCase) CheckText(ctx context.Context, text, applicationID,
 	if len([]rune(text)) > 5000 {
 		return nil, fmt.Errorf("text too long: max 5000 characters")
 	}
+	msg, err := uc.buffer.List(ctx, applicationID)
+	if err != nil {
+		uc.logger.Errorf("buffer.List error: %v", err)
+		return nil, err
+	}
+	msg = append(msg, domain.BMessage{Text: text, SendAt: sendAt})
 
-	verdict, err := uc.classifier.Classify(ctx, text)
+	verdict, err := uc.classifier.Classify(ctx, msg)
 	if err != nil {
 		return nil, fmt.Errorf("classification failed: %w", err)
 	}
@@ -53,14 +67,10 @@ func (uc *ModerationUseCase) CheckText(ctx context.Context, text, applicationID,
 		Text:          text,
 		Verdict:       *verdict,
 		ApplicationID: applicationID,
-		CreatedAt:     time.Now().UTC(),
+		CreatedAt:     sendAt,
 	}
 
-	// Сохраняем в репозиторий. Ошибка сохранения не блокирует ответ клиенту —
-	// логируем, но всё равно возвращаем результат.
-	if err := uc.repo.Save(ctx, record); err != nil {
-		uc.logger.Warnf("failed to save check record: %v\n", err)
-	}
+	uc.saveRecord(ctx, record)
 
 	return record, nil
 }
@@ -94,9 +104,7 @@ func (uc *ModerationUseCase) CheckTextForcedNegative(ctx context.Context, text, 
 		ApplicationID: applicationID,
 		CreatedAt:     time.Now().UTC(),
 	}
-	if err := uc.repo.Save(ctx, record); err != nil {
-		uc.logger.Warnf("failed to save forced negative record: %v\n", err)
-	}
+	uc.saveRecord(ctx, record)
 	return record, nil
 }
 
@@ -106,12 +114,6 @@ func (uc *ModerationUseCase) GetHistoryByApp(
 	applicationID string,
 	limit, offset int,
 ) ([]*domain.CheckRecord, error) {
-	if limit <= 0 || limit > 200 {
-		limit = 50
-	}
-	if offset < 0 {
-		offset = 0
-	}
 	return uc.repo.ListByApplication(ctx, applicationID, limit, offset)
 }
 
@@ -121,4 +123,28 @@ func (uc *ModerationUseCase) GetRecord(ctx context.Context, id string) (*domain.
 		return nil, fmt.Errorf("id must not be empty")
 	}
 	return uc.repo.GetByID(ctx, id)
+}
+
+func (uc *ModerationUseCase) saveRecord(ctx context.Context, record *domain.CheckRecord) {
+	var wg sync.WaitGroup
+
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		if err := uc.repo.Save(ctx, record); err != nil {
+			uc.logger.Warnf("failed to save check record: %v\n", err)
+		}
+	}()
+
+	if uc.buffer != nil && record.ApplicationID != "" {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			if err := uc.buffer.Add(ctx, record.ApplicationID, domain.BMessage{Text: record.Text, SendAt: record.CreatedAt}); err != nil {
+				uc.logger.Warnf("failed to save check record to buffer: %v\n", err)
+			}
+		}()
+	}
+
+	wg.Wait()
 }

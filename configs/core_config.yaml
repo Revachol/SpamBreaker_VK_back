@@ -28,6 +28,18 @@ app:
     migrated: true
     migrations: ./migrations
 
+  redis:
+    enabled: true
+    host: RD_HOST
+    port: RD_PORT
+    password: RD_PSWD
+    db: RD_BASE
+    list_limit: 50
+    list_ttl: 24h
+    dial_timeout: 2s
+    read_timeout: 2s
+    write_timeout: 2s
+
   ml_service:
     host: ML_HOST
     port: ML_PORT
