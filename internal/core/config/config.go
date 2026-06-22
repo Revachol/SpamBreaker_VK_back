@@ -23,6 +23,7 @@ type Config struct {
 	Cors        CORSConfig          `yaml:"cors"`
 	Logger      logger.LoggerConfig `yaml:"logger"`
 	Postgres    PostgresConfig      `yaml:"postgres"`
+	Redis       RedisConfig         `yaml:"redis"`
 	ML          ServiceConfig       `yaml:"ml_service"`
 	JWT         JWTConfig           `yaml:"jwt"`
 	Telegram    TelegramConfig      `yaml:"telegram"`
@@ -54,6 +55,19 @@ type CORSConfig struct {
 type ServiceConfig struct {
 	Host string
 	Port string
+}
+
+type RedisConfig struct {
+	Enabled      bool          `yaml:"enabled"`
+	Host         string        `yaml:"host"`
+	Port         string        `yaml:"port"`
+	Password     string        `yaml:"password"`
+	DB           int           `yaml:"db"`
+	ListLimit    int           `yaml:"list_limit"`
+	ListTTL      time.Duration `yaml:"list_ttl"`
+	DialTimeout  time.Duration `yaml:"dial_timeout"`
+	ReadTimeout  time.Duration `yaml:"read_timeout"`
+	WriteTimeout time.Duration `yaml:"write_timeout"`
 }
 
 type PostgresConfig struct {
@@ -110,6 +124,17 @@ func Load() (*Config, error) {
 		Migrated:            false,
 		Migrations:          "./infra/migrations/",
 	}
+	config.App.Redis = RedisConfig{
+		Enabled:      false,
+		Host:         "localhost",
+		Port:         "6379",
+		DB:           0,
+		ListLimit:    50,
+		ListTTL:      24 * time.Hour,
+		DialTimeout:  2 * time.Second,
+		ReadTimeout:  2 * time.Second,
+		WriteTimeout: 2 * time.Second,
+	}
 	config.App.JWT = JWTConfig{
 		Secret: "changeme",
 		TTL:    24 * time.Hour,
@@ -131,6 +156,10 @@ func loadEnv(cfg *Config) {
 	cfg.Postgres.Base = getEnv(cfg.Postgres.Base, "spambreaker")
 	cfg.Postgres.User = getEnv(cfg.Postgres.User, "uservice")
 	cfg.Postgres.Password = getEnv(cfg.Postgres.Password, "password")
+
+	cfg.Redis.Host = getEnv(cfg.Redis.Host, "localhost")
+	cfg.Redis.Port = getEnv(cfg.Redis.Port, "6379")
+	cfg.Redis.Password = getEnv(cfg.Redis.Password, "")
 
 	cfg.ML.Host = getEnv(cfg.ML.Host, "localhost")
 	cfg.ML.Port = getEnv(cfg.ML.Port, "8080")
