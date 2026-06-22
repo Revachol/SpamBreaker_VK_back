@@ -133,7 +133,7 @@ func (h *BotHandler) Check(c *gin.Context) {
 		return
 	}
 
-	record, err := h.moderation.CheckText(c.Request.Context(), req.Text, app.ID, req.MessageID)
+	record, err := h.moderation.CheckText(c.Request.Context(), req.Text, app.ID, req.MessageID, req.SendAt)
 	if err != nil {
 		status := http.StatusBadRequest
 		if isUpstreamError(err) {

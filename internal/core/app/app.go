@@ -7,11 +7,14 @@ import (
 	mlclient "github.com/Revachol/SpamBreaker_VK_back/internal/clients/ml"
 	"github.com/Revachol/SpamBreaker_VK_back/internal/core/config"
 	httphandler "github.com/Revachol/SpamBreaker_VK_back/internal/core/handlers/http"
+	repositoryInterfaces "github.com/Revachol/SpamBreaker_VK_back/internal/core/repository/interfaces"
 	repository "github.com/Revachol/SpamBreaker_VK_back/internal/core/repository/postgres"
+	redisRepository "github.com/Revachol/SpamBreaker_VK_back/internal/core/repository/redis"
 	"github.com/Revachol/SpamBreaker_VK_back/internal/core/service"
 	jwtpkg "github.com/Revachol/SpamBreaker_VK_back/pkg/jwt"
 	"github.com/Revachol/SpamBreaker_VK_back/pkg/logger"
 	"github.com/Revachol/SpamBreaker_VK_back/pkg/postgres"
+	"github.com/Revachol/SpamBreaker_VK_back/pkg/redis"
 	"github.com/prometheus/client_golang/prometheus"
 )
 
@@ -48,7 +51,20 @@ func Run() {
 	runMigrations(&cfg.Postgres, log)
 
 	// 3. Репозитории.
-	messageRepo := repository.NewMessageRepository(pgx, app.logger)
+	var messageRepo repositoryInterfaces.MessageRepository = repository.NewMessageRepository(pgx, app.logger)
+	var messageBufferRepo repositoryInterfaces.BufferRepository
+	if cfg.Redis.Enabled {
+		redisClient, err := redis.NewConnect(context.Background(), &cfg.Redis)
+		if err != nil {
+			app.logger.Fatal(err)
+		}
+		messageBufferRepo = redisRepository.NewBufferRepository(
+			redisClient,
+			cfg.Redis.ListLimit,
+			cfg.Redis.ListTTL,
+			app.logger,
+		)
+	}
 	moderatorRepo := repository.NewModeratorRepository(pgx, app.logger)
 	modAccRepo := repository.NewModeratorAccountRepo(pgx, &app.logger)
 	applicationRepo := repository.NewApplicationRepository(pgx, app.logger)
@@ -59,7 +75,7 @@ func Run() {
 
 	// 6. Бизнес-логика.
 	modAccService := service.NewModeratorService(moderatorRepo, modAccRepo, applicationRepo, app.logger)
-	moderationUC := service.NewModerationUseCase(mlClient, messageRepo, app.logger)
+	moderationUC := service.NewModerationUseCase(mlClient, messageRepo, messageBufferRepo, app.logger)
 	authUC := service.NewAuthUseCase(moderatorRepo, jwtManager, app.logger)
 	botUC := service.NewBotUseCase(applicationRepo, applicationSettingsRepo, modAccRepo, app.logger)
 
