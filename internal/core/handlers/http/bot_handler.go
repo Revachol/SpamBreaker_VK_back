@@ -4,6 +4,7 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/Revachol/SpamBreaker_VK_back/internal/core/service"
 	"github.com/Revachol/SpamBreaker_VK_back/pkg/logger"
@@ -36,9 +37,10 @@ func NewBotHandler(
 // ---------- DTOs ----------
 
 type checkRequest struct {
-	Text      string `json:"text" binding:"required"`
-	ChatID    string `json:"chat_id" binding:"required"`
-	MessageID string `json:"message_id,omitempty"`
+	Text      string    `json:"text" binding:"required"`
+	ChatID    string    `json:"chat_id" binding:"required"`
+	MessageID string    `json:"message_id,omitempty"`
+	SendAt    time.Time `json:"send_at"`
 }
 
 type checkResponse struct {
