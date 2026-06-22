@@ -49,8 +49,14 @@ func (uc *ModerationUseCase) CheckText(
 	if len([]rune(text)) > 5000 {
 		return nil, fmt.Errorf("text too long: max 5000 characters")
 	}
+	msg, err := uc.buffer.List(ctx, applicationID)
+	if err != nil {
+		uc.logger.Errorf("buffer.List error: %v", err)
+		return nil, err
+	}
+	msg = append(msg, domain.BMessage{Text: text, SendAt: sendAt})
 
-	verdict, err := uc.classifier.Classify(ctx, text)
+	verdict, err := uc.classifier.Classify(ctx, msg)
 	if err != nil {
 		return nil, fmt.Errorf("classification failed: %w", err)
 	}
@@ -108,43 +114,6 @@ func (uc *ModerationUseCase) GetHistoryByApp(
 	applicationID string,
 	limit, offset int,
 ) ([]*domain.CheckRecord, error) {
-	if limit <= 0 || limit > 200 {
-		limit = 50
-	}
-	if offset < 0 {
-		offset = 0
-	}
-
-	if uc.buffer != nil && offset == 0 && limit <= uc.buffer.Limit() {
-		bufferLimit := uc.buffer.Limit()
-		cached, err := uc.buffer.List(ctx, applicationID, bufferLimit)
-		if err != nil {
-			uc.logger.Warnf("failed to read message buffer: %v", err)
-			return uc.repo.ListByApplication(ctx, applicationID, limit, offset)
-		}
-		if len(cached) >= bufferLimit {
-			if len(cached) > limit {
-				return cached[:limit], nil
-			}
-			return cached, nil
-		}
-
-		missingLimit := bufferLimit - len(cached)
-		missing, err := uc.repo.ListByApplication(ctx, applicationID, missingLimit, len(cached))
-		if err != nil {
-			return nil, err
-		}
-
-		records := append(cached, missing...)
-		if err := uc.buffer.Replace(ctx, applicationID, records); err != nil {
-			uc.logger.Warnf("failed to refill message buffer: %v", err)
-		}
-		if len(records) > limit {
-			return records[:limit], nil
-		}
-		return records, nil
-	}
-
 	return uc.repo.ListByApplication(ctx, applicationID, limit, offset)
 }
 
@@ -168,11 +137,10 @@ func (uc *ModerationUseCase) saveRecord(ctx context.Context, record *domain.Chec
 	}()
 
 	if uc.buffer != nil && record.ApplicationID != "" {
-		bufferRecord := *record
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			if err := uc.buffer.Add(ctx, &bufferRecord); err != nil {
+			if err := uc.buffer.Add(ctx, record.ApplicationID, domain.BMessage{Text: record.Text, SendAt: record.CreatedAt}); err != nil {
 				uc.logger.Warnf("failed to save check record to buffer: %v\n", err)
 			}
 		}()

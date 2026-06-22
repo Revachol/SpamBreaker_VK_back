@@ -14,7 +14,12 @@ import (
 
 // mlRequest — тело запроса к ML-сервису.
 type mlRequest struct {
-	Text string `json:"text"`
+	Text   string    `json:"text"`
+	SendAt time.Time `json:"send_at"`
+}
+
+type mlBatchRequest struct {
+	Messages []mlRequest
 }
 
 // mlResponse — ответ от ML-сервиса.
@@ -42,8 +47,19 @@ func NewClient(baseURL string, l logger.Log) *Client {
 }
 
 // Classify отправляет текст в ML-сервис и возвращает вердикт.
-func (c *Client) Classify(ctx context.Context, text string) (*domain.Verdict, error) {
-	body, err := json.Marshal(mlRequest{Text: text})
+func (c *Client) Classify(ctx context.Context, batch []domain.BMessage) (*domain.Verdict, error) {
+	request := mlBatchRequest{
+		Messages: make([]mlRequest, 0, len(batch)),
+	}
+
+	for _, msg := range batch {
+		request.Messages = append(request.Messages, mlRequest{
+			Text:   msg.Text,
+			SendAt: msg.SendAt,
+		})
+	}
+
+	body, err := json.Marshal(request)
 	if err != nil {
 		return nil, fmt.Errorf("ml client: marshal request: %w", err)
 	}

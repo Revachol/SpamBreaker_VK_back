@@ -1,12 +1,14 @@
 package httphandler
 
 import (
+	"errors"
 	"net/http"
 	"strconv"
 	"strings"
 	"time"
 
 	"github.com/Revachol/SpamBreaker_VK_back/internal/core/service"
+	"github.com/Revachol/SpamBreaker_VK_back/internal/domain"
 	"github.com/Revachol/SpamBreaker_VK_back/pkg/logger"
 	"github.com/gin-gonic/gin"
 )
@@ -532,7 +534,7 @@ func queryInt(c *gin.Context, key string, defaultVal int, l logger.Log) int {
 }
 
 func isUpstreamError(err error) bool {
-	return err != nil && len(err.Error()) > 9 && err.Error()[:9] == "ml client"
+	return errors.Is(err, domain.ErrClassifierUpstream)
 }
 
 func normalizeBotService(service string) string {
