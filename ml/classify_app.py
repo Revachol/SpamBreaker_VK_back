@@ -26,12 +26,14 @@ from pydantic import BaseModel as PydanticBase
 from transformers import BertTokenizer, BertModel
 # from spam_filter import SpamFilter
 from prometheus_client import Counter, Histogram, generate_latest, CONTENT_TYPE_LATEST
+from datetime import datetime
 import time
 
 # ── Схема запроса / ответа ──────────────────────────────────────────
 
 class ClassifyRequest(PydanticBase):
     text: str
+    send_at: datetime
 
 class ClassifyResponse(PydanticBase):
     label: str
@@ -39,7 +41,7 @@ class ClassifyResponse(PydanticBase):
     all_scores: dict[str, float]
 
 class BatchRequest(PydanticBase):
-    messages: list[str]
+    messages: list[ClassifyRequest]
 
 class BatchMessageResult(PydanticBase):
     text: str
@@ -211,17 +213,15 @@ def classify(req: ClassifyRequest):
     return ClassifyResponse(**_classify_text(req.text))
 
 
-@app.post("/classify_batch", response_model=BatchResponse)
+@app.post("/classify/batch", response_model=ClassifyResponse)
 def classify_batch(req: BatchRequest):
     if not req.messages:
         raise HTTPException(status_code=422, detail="messages must not be empty")
-    results = []
-    for text in req.messages:
-        if text.strip():
-            data = _classify_text(text)
-            data["text"] = text
-            results.append(BatchMessageResult(**data))
-    return BatchResponse(results=results)
+    results = ""
+    for el in req.messages:
+        if el.text.strip():
+            results = _classify_text(el.text)
+    return ClassifyResponse(**_classify_text(results))
 
 
 @app.get("/health")

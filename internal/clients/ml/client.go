@@ -12,22 +12,7 @@ import (
 	"github.com/Revachol/SpamBreaker_VK_back/pkg/logger"
 )
 
-// mlRequest — тело запроса к ML-сервису.
-type mlRequest struct {
-	Text   string    `json:"text"`
-	SendAt time.Time `json:"send_at"`
-}
-
-type mlBatchRequest struct {
-	Messages []mlRequest
-}
-
-// mlResponse — ответ от ML-сервиса.
-type mlResponse struct {
-	Label      string             `json:"label"`
-	Confidence float64            `json:"confidence"`
-	AllScores  map[string]float64 `json:"all_scores"`
-}
+var _ domain.Classifier = (*Client)(nil)
 
 // Client реализует domain.Classifier.
 type Client struct {
@@ -44,6 +29,23 @@ func NewClient(baseURL string, l logger.Log) *Client {
 		},
 		logger: l,
 	}
+}
+
+// mlRequest — тело запроса к ML-сервису.
+type mlRequest struct {
+	Text   string    `json:"text"`
+	SendAt time.Time `json:"send_at"`
+}
+
+type mlBatchRequest struct {
+	Messages []mlRequest
+}
+
+// mlResponse — ответ от ML-сервиса.
+type mlResponse struct {
+	Label      string             `json:"label"`
+	Confidence float64            `json:"confidence"`
+	AllScores  map[string]float64 `json:"all_scores"`
 }
 
 // Classify отправляет текст в ML-сервис и возвращает вердикт.
@@ -67,7 +69,7 @@ func (c *Client) Classify(ctx context.Context, batch []domain.BMessage) (*domain
 	req, err := http.NewRequestWithContext(
 		ctx,
 		http.MethodPost,
-		c.baseURL+"/classify",
+		c.baseURL+"/classify/batch",
 		bytes.NewReader(body),
 	)
 	if err != nil {

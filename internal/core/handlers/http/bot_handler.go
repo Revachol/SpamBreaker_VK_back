@@ -73,18 +73,6 @@ type verifyUserTokenRequest struct {
 	UserID string `json:"user_id" binding:"required"`
 }
 
-type verifyChatRequest struct {
-	ChatID string `json:"chat_id" binding:"required"`
-}
-
-type verifyChatResponse struct {
-	Success   bool   `json:"success"`
-	Verified  bool   `json:"verified"`
-	Message   string `json:"message"`
-	Activated bool   `json:"activated"`
-	Token     string `json:"token"`
-}
-
 // ---------- Handlers ----------
 
 // Check godoc
